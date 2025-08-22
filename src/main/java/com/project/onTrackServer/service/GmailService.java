@@ -12,6 +12,7 @@ import com.google.auth.oauth2.AccessToken;
 import com.google.auth.oauth2.GoogleCredentials;
 import com.project.onTrackServer.model.Item;
 import com.project.onTrackServer.model.Token;
+import com.project.onTrackServer.exception.GmailAuthenticationException;
 import org.springframework.stereotype.Service;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -54,6 +55,13 @@ public class GmailService {
                 
         } catch (IOException e) {
             logger.error("Error fetching emails from Gmail for user {}: {}", token.getUserId(), e.getMessage());
+            
+            // Check if it's an authentication error
+            if (e.getMessage().contains("401") || e.getMessage().contains("Invalid Credentials") || 
+                e.getMessage().contains("UNAUTHENTICATED") || e.getMessage().contains("authError")) {
+                throw new GmailAuthenticationException("Gmail authentication failed: " + e.getMessage(), e);
+            }
+            
             throw new RuntimeException("Failed to fetch emails from Gmail: " + e.getMessage());
         } catch (Exception e) {
             logger.error("Unexpected error for user {}: {}", token.getUserId(), e.getMessage());
