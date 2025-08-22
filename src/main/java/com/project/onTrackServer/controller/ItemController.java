@@ -14,7 +14,7 @@ import java.util.Optional;
 
 @RestController
 @RequestMapping("/api")
-@CrossOrigin(origins = "*") // Allow all origins for testing
+@CrossOrigin(origins = "*")
 public class ItemController {
     @Autowired
     private ItemRepository itemRepository;
@@ -27,48 +27,34 @@ public class ItemController {
 
     // Token endpoints
     @PostMapping("/tokens")
-    public ResponseEntity<?> saveToken(@RequestBody Token token) {
-        try {
-            // Check if token already exists for this user
-            Optional<Token> existingToken = tokenRepository.findByUserId(token.getUserId());
-            if (existingToken.isPresent()) {
-                // Update existing token
-                Token existing = existingToken.get();
+    public ResponseEntity<Token> saveToken(@RequestBody Token token) {
+        Token existingToken = tokenRepository.findByUserId(token.getUserId())
+            .map(existing -> {
                 existing.setAccessToken(token.getAccessToken());
                 existing.setRefreshToken(token.getRefreshToken());
                 existing.setEmail(token.getEmail());
-                return ResponseEntity.ok(tokenRepository.save(existing));
-            } else {
-                // Save new token
-                return ResponseEntity.ok(tokenRepository.save(token));
-            }
-        } catch (Exception e) {
-            return ResponseEntity.badRequest().body("Error saving token: " + e.getMessage());
-        }
+                return existing;
+            })
+            .orElse(token);
+        
+        return ResponseEntity.ok(tokenRepository.save(existingToken));
     }
 
     @GetMapping("/tokens/{userId}")
-    public ResponseEntity<?> getToken(@PathVariable String userId) {
-        Optional<Token> token = tokenRepository.findByUserId(userId);
-        if (token.isPresent()) {
-            return ResponseEntity.ok(token.get());
-        } else {
-            return ResponseEntity.notFound().build();
-        }
+    public ResponseEntity<Token> getToken(@PathVariable String userId) {
+        return tokenRepository.findByUserId(userId)
+            .map(ResponseEntity::ok)
+            .orElse(ResponseEntity.notFound().build());
     }
     
     @GetMapping("/tokens/exists/{userId}")
     public ResponseEntity<Boolean> tokenExists(@PathVariable String userId) {
-        Optional<Token> tokenOpt = tokenRepository.findByUserId(userId);
-        if (tokenOpt.isPresent()) {
-            Token token = tokenOpt.get();
-            // Check if it's a valid token (not a placeholder)
-            boolean hasValidToken = token.getAccessToken() != null && 
-                                   !token.getAccessToken().equals("gmail_access_granted") &&
-                                   !token.getAccessToken().trim().isEmpty();
-            return ResponseEntity.ok(hasValidToken);
-        }
-        return ResponseEntity.ok(false);
+        boolean hasValidToken = tokenRepository.findByUserId(userId)
+            .map(token -> token.getAccessToken() != null && 
+                         !token.getAccessToken().equals("gmail_access_granted") &&
+                         !token.getAccessToken().trim().isEmpty())
+            .orElse(false);
+        return ResponseEntity.ok(hasValidToken);
     }
 
     // Item endpoints
@@ -90,42 +76,39 @@ public class ItemController {
     
     @GetMapping("/items/user/{userId}")
     public ResponseEntity<List<Item>> getUserItems(@PathVariable String userId) {
-        try {
-            List<Item> items = itemRepository.findByUserIdOrderByIdDesc(userId);
-            return ResponseEntity.ok(items);
-        } catch (Exception e) {
-            return ResponseEntity.badRequest().build();
-        }
+        List<Item> items = itemRepository.findByUserIdOrderByIdDesc(userId);
+        return ResponseEntity.ok(items);
     }
     
     @PostMapping("/items/fetch/{userId}")
-    public ResponseEntity<?> fetchAndStoreEmails(@PathVariable String userId) {
-        try {
-            // Get the user's token
-            Optional<Token> tokenOpt = tokenRepository.findByUserId(userId);
-            if (tokenOpt.isEmpty()) {
-                return ResponseEntity.badRequest().body("No token found for user: " + userId + ". Please grant Gmail permission first.");
-            }
-            
-            Token token = tokenOpt.get();
-            
-            // Check if we have a real access token (not just a placeholder)
-            if (token.getAccessToken() == null || "gmail_access_granted".equals(token.getAccessToken())) {
-                return ResponseEntity.badRequest().body("No valid Gmail access token found for user: " + userId + ". Please grant Gmail permission first.");
-            }
-            
-            // Fetch real emails from Gmail
-            List<Item> emailItems = gmailService.fetchEmailsFromGmail(token);
-            
-            // Save emails to database
-            List<Item> savedEmails = emailItems.stream()
-                    .map(itemRepository::save)
-                    .toList();
-            
-            return ResponseEntity.ok(savedEmails);
-            
-        } catch (Exception e) {
-            return ResponseEntity.badRequest().body("Error fetching emails: " + e.getMessage());
+    public ResponseEntity<List<Item>> fetchAndStoreEmails(@PathVariable String userId) {
+        Token token = tokenRepository.findByUserId(userId)
+            .orElseThrow(() -> new IllegalArgumentException("No token found for user: " + userId));
+        
+        if (token.getAccessToken() == null || "gmail_access_granted".equals(token.getAccessToken())) {
+            throw new IllegalStateException("No valid Gmail access token found for user: " + userId);
         }
+        
+        List<Item> emailItems = gmailService.fetchEmailsFromGmail(token);
+        List<Item> savedEmails = emailItems.stream()
+                .map(itemRepository::save)
+                .toList();
+        
+        return ResponseEntity.ok(savedEmails);
+    }
+    
+    @ExceptionHandler(IllegalArgumentException.class)
+    public ResponseEntity<String> handleIllegalArgument(IllegalArgumentException e) {
+        return ResponseEntity.badRequest().body(e.getMessage());
+    }
+    
+    @ExceptionHandler(IllegalStateException.class)
+    public ResponseEntity<String> handleIllegalState(IllegalStateException e) {
+        return ResponseEntity.badRequest().body(e.getMessage());
+    }
+    
+    @ExceptionHandler(RuntimeException.class)
+    public ResponseEntity<String> handleRuntimeException(RuntimeException e) {
+        return ResponseEntity.badRequest().body("Error: " + e.getMessage());
     }
 }

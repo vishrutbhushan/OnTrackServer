@@ -29,21 +29,11 @@ public class GmailService {
     private static final String APPLICATION_NAME = "OnTrack Server";
     private static final JsonFactory JSON_FACTORY = GsonFactory.getDefaultInstance();
     
-    /**
-     * Fetch emails from Gmail using stored OAuth tokens
-     */
     public List<Item> fetchEmailsFromGmail(Token token) {
         logger.info("Fetching emails from Gmail for user: {}", token.getUserId());
-        List<Item> items = new ArrayList<>();
         
         try {
             Gmail service = getGmailService(token);
-            if (service == null) {
-                logger.error("Failed to create Gmail service for user: {}", token.getUserId());
-                throw new RuntimeException("Unable to create Gmail service. Please check your OAuth tokens.");
-            }
-            
-            // List messages
             ListMessagesResponse listResponse = service.users().messages()
                 .list("me")
                 .setMaxResults(10L)
@@ -52,92 +42,74 @@ public class GmailService {
             List<Message> messages = listResponse.getMessages();
             if (messages == null || messages.isEmpty()) {
                 logger.info("No messages found for user: {}", token.getUserId());
-                return items;
+                return new ArrayList<>();
             }
             
             logger.info("Found {} messages for user: {}", messages.size(), token.getUserId());
             
-            // Get details for each message
-            for (Message message : messages) {
-                try {
-                    Message fullMessage = service.users().messages()
-                        .get("me", message.getId())
-                        .setFormat("metadata")
-                        .execute();
-                        
-                    String subject = "No Subject";
-                    String from = "Unknown Sender";
-                    
-                    if (fullMessage.getPayload() != null && fullMessage.getPayload().getHeaders() != null) {
-                        for (var header : fullMessage.getPayload().getHeaders()) {
-                            if ("Subject".equals(header.getName())) {
-                                subject = header.getValue();
-                            } else if ("From".equals(header.getName())) {
-                                from = header.getValue();
-                                // Extract just the email address if format is "Name <email>"
-                                if (from.contains("<") && from.contains(">")) {
-                                    from = from.substring(from.indexOf("<") + 1, from.indexOf(">"));
-                                }
-                            }
-                        }
+            return messages.stream()
+                .map(message -> getEmailItem(service, message, token.getUserId()))
+                .filter(item -> item != null)
+                .toList();
+                
+        } catch (IOException e) {
+            logger.error("Error fetching emails from Gmail for user {}: {}", token.getUserId(), e.getMessage());
+            throw new RuntimeException("Failed to fetch emails from Gmail: " + e.getMessage());
+        } catch (Exception e) {
+            logger.error("Unexpected error for user {}: {}", token.getUserId(), e.getMessage());
+            throw new RuntimeException("Failed to fetch emails: " + e.getMessage());
+        }
+    }
+    
+    private Item getEmailItem(Gmail service, Message message, String userId) {
+        try {
+            Message fullMessage = service.users().messages()
+                .get("me", message.getId())
+                .setFormat("metadata")
+                .execute();
+                
+            String subject = "No Subject";
+            String from = "Unknown Sender";
+            
+            if (fullMessage.getPayload() != null && fullMessage.getPayload().getHeaders() != null) {
+                for (var header : fullMessage.getPayload().getHeaders()) {
+                    if ("Subject".equals(header.getName())) {
+                        subject = header.getValue();
+                    } else if ("From".equals(header.getName())) {
+                        from = extractEmail(header.getValue());
                     }
-                    
-                    Item item = new Item(subject, "Email content preview...", from, token.getUserId());
-                    items.add(item);
-                    
-                } catch (Exception e) {
-                    logger.error("Error processing message {}: {}", message.getId(), e.getMessage());
                 }
             }
             
-            logger.info("Successfully processed {} emails for user: {}", items.size(), token.getUserId());
+            return new Item(subject, "Email content preview...", from, userId);
             
-        } catch (IOException e) {
-            if (e.getMessage().contains("401") || e.getMessage().contains("unauthorized")) {
-                logger.error("OAuth token expired or invalid for user {}: {}", token.getUserId(), e.getMessage());
-                throw new RuntimeException("Gmail access token has expired. Please re-authorize the application.");
-            } else {
-                logger.error("IO error fetching emails from Gmail for user {}: {}", token.getUserId(), e.getMessage(), e);
-                throw new RuntimeException("Failed to fetch emails from Gmail: " + e.getMessage());
-            }
-        } catch (IllegalStateException e) {
-            if (e.getMessage().contains("OAuth2Credentials")) {
-                logger.error("OAuth2 token refresh error for user {}: {}", token.getUserId(), e.getMessage());
-                throw new RuntimeException("Gmail access token needs to be refreshed. Please re-authorize the application.");
-            } else {
-                logger.error("State error fetching emails from Gmail for user {}: {}", token.getUserId(), e.getMessage(), e);
-                throw new RuntimeException("Failed to fetch emails from Gmail: " + e.getMessage());
-            }
         } catch (Exception e) {
-            logger.error("Unexpected error fetching emails from Gmail for user {}: {}", token.getUserId(), e.getMessage(), e);
-            throw new RuntimeException("Failed to fetch emails from Gmail: " + e.getMessage());
+            logger.error("Error processing message {}: {}", message.getId(), e.getMessage());
+            return null;
         }
-        
-        return items;
     }
     
-    /**
-     * Create Gmail service using stored OAuth tokens
-     */
+    private String extractEmail(String fromHeader) {
+        if (fromHeader.contains("<") && fromHeader.contains(">")) {
+            return fromHeader.substring(fromHeader.indexOf("<") + 1, fromHeader.indexOf(">"));
+        }
+        return fromHeader;
+    }
+    
     private Gmail getGmailService(Token token) {
         try {
             if (token.getAccessToken() == null || token.getAccessToken().equals("gmail_access_granted")) {
-                logger.error("No valid access token available for user: {}", token.getUserId());
-                return null;
+                throw new IllegalStateException("No valid access token available for user: " + token.getUserId());
             }
             
             final NetHttpTransport HTTP_TRANSPORT = GoogleNetHttpTransport.newTrustedTransport();
             
-            // Create credential from stored token
-            // Set expiry time far in the future to avoid automatic refresh attempts
-            Date expiryTime = new Date(System.currentTimeMillis() + (24 * 60 * 60 * 1000)); // 24 hours
+            Date expiryTime = new Date(System.currentTimeMillis() + (24 * 60 * 60 * 1000));
             AccessToken accessToken = new AccessToken(token.getAccessToken(), expiryTime);
             
-            // Create credentials that won't attempt to refresh
             GoogleCredentials credentials = new GoogleCredentials(accessToken) {
                 @Override
                 public AccessToken refreshAccessToken() throws IOException {
-                    // Don't attempt to refresh - just return the current token
                     logger.debug("Access token refresh requested for user: {}, using existing token", token.getUserId());
                     return getAccessToken();
                 }
@@ -148,8 +120,8 @@ public class GmailService {
                 .build();
                 
         } catch (GeneralSecurityException | IOException e) {
-            logger.error("Error creating Gmail service: {}", e.getMessage(), e);
-            return null;
+            logger.error("Error creating Gmail service: {}", e.getMessage());
+            throw new RuntimeException("Failed to create Gmail service: " + e.getMessage());
         }
     }
 }
