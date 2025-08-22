@@ -2,9 +2,13 @@ package com.project.onTrackServer.controller;
 
 import com.project.onTrackServer.model.Item;
 import com.project.onTrackServer.model.Token;
+import com.project.onTrackServer.model.FCMToken;
+import com.project.onTrackServer.model.ApiResponse;
 import com.project.onTrackServer.repository.ItemRepository;
 import com.project.onTrackServer.repository.TokenRepository;
+import com.project.onTrackServer.repository.FCMTokenRepository;
 import com.project.onTrackServer.service.GmailService;
+import com.project.onTrackServer.service.NotificationService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -23,7 +27,13 @@ public class ItemController {
     private TokenRepository tokenRepository;
     
     @Autowired
+    private FCMTokenRepository fcmTokenRepository;
+    
+    @Autowired
     private GmailService gmailService;
+    
+    @Autowired
+    private NotificationService notificationService;
 
     // Token endpoints
     @PostMapping("/tokens")
@@ -95,6 +105,58 @@ public class ItemController {
                 .toList();
         
         return ResponseEntity.ok(savedEmails);
+    }
+    
+    // Notification endpoints
+    @PostMapping("/notifications/test/{userId}")
+    public ResponseEntity<ApiResponse> sendTestNotification(@PathVariable String userId) {
+        try {
+            notificationService.sendTestNotification(userId);
+            return ResponseEntity.ok(new ApiResponse(true, "Test notification sent successfully for user: " + userId));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(new ApiResponse(false, "Failed to send notification: " + e.getMessage()));
+        }
+    }
+    
+    @PostMapping("/notifications/send")
+    public ResponseEntity<ApiResponse> sendCustomNotification(
+            @RequestParam String userId,
+            @RequestParam String title,
+            @RequestParam String message) {
+        try {
+            notificationService.sendNotification(userId, title, message);
+            return ResponseEntity.ok(new ApiResponse(true, "Notification sent successfully for user: " + userId));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(new ApiResponse(false, "Failed to send notification: " + e.getMessage()));
+        }
+    }
+    
+    // Simple test endpoint that doesn't use Pub/Sub
+    @PostMapping("/notifications/simple-test/{userId}")
+    public ResponseEntity<ApiResponse> sendSimpleTestNotification(@PathVariable String userId) {
+        return ResponseEntity.ok(new ApiResponse(true, "Simple test notification triggered for user: " + userId + " at " + java.time.LocalDateTime.now()));
+    }
+    
+    // FCM Token endpoints
+    @PostMapping("/notifications/fcm-token/{userId}")
+    public ResponseEntity<ApiResponse> storeFCMToken(@PathVariable String userId, @RequestParam String fcmToken) {
+        try {
+            Optional<FCMToken> existingToken = fcmTokenRepository.findByUserId(userId);
+            
+            FCMToken fcmTokenEntity;
+            if (existingToken.isPresent()) {
+                fcmTokenEntity = existingToken.get();
+                fcmTokenEntity.setFcmToken(fcmToken);
+            } else {
+                fcmTokenEntity = new FCMToken(userId, fcmToken);
+            }
+            
+            fcmTokenRepository.save(fcmTokenEntity);
+            
+            return ResponseEntity.ok(new ApiResponse(true, "FCM token stored successfully for user: " + userId));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(new ApiResponse(false, "Failed to store FCM token: " + e.getMessage()));
+        }
     }
     
     @ExceptionHandler(IllegalArgumentException.class)

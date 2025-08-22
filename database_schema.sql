@@ -1,6 +1,7 @@
 -- Database schema for OnTrack application
 
 -- Drop existing tables if they exist
+DROP TABLE IF EXISTS fcm_tokens;
 DROP TABLE IF EXISTS item;
 DROP TABLE IF EXISTS token;
 
@@ -20,5 +21,15 @@ CREATE TABLE item (
     snippet TEXT,
     sender VARCHAR(255),
     user_id VARCHAR(255),
+    INDEX idx_user_id (user_id)
+);
+
+-- Create FCM Tokens table (for push notifications)
+CREATE TABLE fcm_tokens (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    user_id VARCHAR(255) UNIQUE NOT NULL,
+    fcm_token VARCHAR(1000) NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     INDEX idx_user_id (user_id)
 );
