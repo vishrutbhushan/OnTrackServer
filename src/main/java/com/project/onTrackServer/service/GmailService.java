@@ -12,6 +12,7 @@ import com.google.auth.oauth2.AccessToken;
 import com.google.auth.oauth2.GoogleCredentials;
 import com.project.onTrackServer.model.Item;
 import com.project.onTrackServer.model.Token;
+import com.project.onTrackServer.repository.ItemRepository;
 import com.project.onTrackServer.exception.GmailAuthenticationException;
 import org.springframework.stereotype.Service;
 import org.slf4j.Logger;
@@ -69,15 +70,64 @@ public class GmailService {
         }
     }
     
+    public List<Item> fetchNewEmailsFromGmail(Token token, ItemRepository itemRepository) {
+        logger.info("Fetching new emails from Gmail for user: {}", token.getUserId());
+        
+        try {
+            Gmail service = getGmailService(token);
+            ListMessagesResponse listResponse = service.users().messages()
+                .list("me")
+                .setMaxResults(10L)
+                .execute();
+                
+            List<Message> messages = listResponse.getMessages();
+            if (messages == null || messages.isEmpty()) {
+                logger.info("No messages found for user: {}", token.getUserId());
+                return new ArrayList<>();
+            }
+            
+            logger.info("Found {} messages for user: {}", messages.size(), token.getUserId());
+            
+            List<Item> newItems = new ArrayList<>();
+            for (Message message : messages) {
+                // Check if we've already processed this email
+                if (!itemRepository.existsByGmailMessageId(message.getId())) {
+                    Item emailItem = getEmailItemWithMessageId(service, message, token.getUserId());
+                    if (emailItem != null) {
+                        newItems.add(emailItem);
+                    }
+                }
+            }
+            
+            logger.info("Found {} new emails for user: {}", newItems.size(), token.getUserId());
+            return newItems;
+                
+        } catch (IOException e) {
+            logger.error("Error fetching new emails from Gmail for user {}: {}", token.getUserId(), e.getMessage());
+            
+            // Check if it's an authentication error
+            if (e.getMessage().contains("401") || e.getMessage().contains("Invalid Credentials") || 
+                e.getMessage().contains("UNAUTHENTICATED") || e.getMessage().contains("authError")) {
+                throw new GmailAuthenticationException("Gmail authentication failed: " + e.getMessage(), e);
+            }
+            
+            throw new RuntimeException("Failed to fetch emails from Gmail: " + e.getMessage());
+        } catch (Exception e) {
+            logger.error("Unexpected error for user {}: {}", token.getUserId(), e.getMessage());
+            throw new RuntimeException("Failed to fetch emails: " + e.getMessage());
+        }
+    }
+    
     private Item getEmailItem(Gmail service, Message message, String userId) {
         try {
             Message fullMessage = service.users().messages()
                 .get("me", message.getId())
-                .setFormat("metadata")
+                .setFormat("full")  // Get full content for analysis
                 .execute();
                 
             String subject = "No Subject";
             String from = "Unknown Sender";
+            String content = extractEmailContent(fullMessage);
             
             if (fullMessage.getPayload() != null && fullMessage.getPayload().getHeaders() != null) {
                 for (var header : fullMessage.getPayload().getHeaders()) {
@@ -89,11 +139,69 @@ public class GmailService {
                 }
             }
             
-            return new Item(subject, "Email content preview...", from, userId);
+            return new Item(subject, content, from, userId);
             
         } catch (Exception e) {
             logger.error("Error processing message {}: {}", message.getId(), e.getMessage());
             return null;
+        }
+    }
+    
+    private Item getEmailItemWithMessageId(Gmail service, Message message, String userId) {
+        try {
+            Message fullMessage = service.users().messages()
+                .get("me", message.getId())
+                .setFormat("full")  // Get full content for analysis
+                .execute();
+                
+            String subject = "No Subject";
+            String from = "Unknown Sender";
+            String content = extractEmailContent(fullMessage);
+            
+            if (fullMessage.getPayload() != null && fullMessage.getPayload().getHeaders() != null) {
+                for (var header : fullMessage.getPayload().getHeaders()) {
+                    if ("Subject".equals(header.getName())) {
+                        subject = header.getValue();
+                    } else if ("From".equals(header.getName())) {
+                        from = extractEmail(header.getValue());
+                    }
+                }
+            }
+            
+            // Create item with Gmail message ID for tracking
+            Item item = new Item(subject, content, from, userId);
+            item.setGmailMessageId(message.getId());
+            
+            return item;
+            
+        } catch (Exception e) {
+            logger.error("Error processing message {}: {}", message.getId(), e.getMessage());
+            return null;
+        }
+    }
+    
+    private String extractEmailContent(Message message) {
+        try {
+            if (message.getPayload() != null) {
+                // Try to get plain text content first
+                if (message.getPayload().getBody() != null && message.getPayload().getBody().getData() != null) {
+                    return new String(java.util.Base64.getUrlDecoder().decode(message.getPayload().getBody().getData()));
+                }
+                
+                // If multipart, look for text/plain parts
+                if (message.getPayload().getParts() != null) {
+                    for (var part : message.getPayload().getParts()) {
+                        if ("text/plain".equals(part.getMimeType()) && 
+                            part.getBody() != null && part.getBody().getData() != null) {
+                            return new String(java.util.Base64.getUrlDecoder().decode(part.getBody().getData()));
+                        }
+                    }
+                }
+            }
+            return "No content available";
+        } catch (Exception e) {
+            logger.error("Error extracting email content: {}", e.getMessage());
+            return "Error extracting content";
         }
     }
     

@@ -4,6 +4,7 @@ import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
+import jakarta.persistence.Column;
 
 @Entity
 public class Item {
@@ -14,6 +15,12 @@ public class Item {
     private String snippet;
     private String sender;
     private String userId;
+    
+    @Column(name = "gmail_message_id", unique = true)
+    private String gmailMessageId; // To track processed emails
+    
+    @Column(name = "order_id")
+    private String orderId; // Extracted order ID
 
     public Item() {}
 
@@ -22,6 +29,15 @@ public class Item {
         this.snippet = snippet;
         this.sender = sender;
         this.userId = userId;
+    }
+    
+    public Item(String subject, String snippet, String sender, String userId, String gmailMessageId, String orderId) {
+        this.subject = subject;
+        this.snippet = snippet;
+        this.sender = sender;
+        this.userId = userId;
+        this.gmailMessageId = gmailMessageId;
+        this.orderId = orderId;
     }
 
     public Long getId() {
@@ -62,5 +78,21 @@ public class Item {
 
     public void setUserId(String userId) {
         this.userId = userId;
+    }
+    
+    public String getGmailMessageId() {
+        return gmailMessageId;
+    }
+    
+    public void setGmailMessageId(String gmailMessageId) {
+        this.gmailMessageId = gmailMessageId;
+    }
+    
+    public String getOrderId() {
+        return orderId;
+    }
+    
+    public void setOrderId(String orderId) {
+        this.orderId = orderId;
     }
 }
