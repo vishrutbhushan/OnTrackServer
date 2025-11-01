@@ -4,33 +4,52 @@ import jakarta.persistence.*;
 import java.time.LocalDateTime;
 
 @Entity
-@Table(name = "fcm_tokens")
-public class FCMToken {
+@Table(name = "users")
+public class User {
     
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
     
-    @Column(name = "user_id", nullable = false)
+    @Column(name = "user_id", unique = true, nullable = false)
     private String userId;
     
-    @Column(name = "fcm_token", nullable = false, length = 1000)
+    @Column(name = "email", nullable = false)
+    private String email;
+    
+    @Column(name = "display_name")
+    private String displayName;
+    
+    @Column(name = "access_token", length = 2000)
+    private String accessToken;
+    
+    @Column(name = "fcm_token", length = 1000)
     private String fcmToken;
     
-    @Column(name = "created_at", nullable = false)
+    @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;
     
     @Column(name = "updated_at", nullable = false)
     private LocalDateTime updatedAt;
     
-    public FCMToken() {
+    public User() {
         this.createdAt = LocalDateTime.now();
         this.updatedAt = LocalDateTime.now();
     }
     
-    public FCMToken(String userId, String fcmToken) {
+    public User(String userId, String email, String displayName) {
         this();
         this.userId = userId;
+        this.email = email;
+        this.displayName = displayName;
+    }
+    
+    public User(String userId, String email, String displayName, String accessToken, String fcmToken) {
+        this();
+        this.userId = userId;
+        this.email = email;
+        this.displayName = displayName;
+        this.accessToken = accessToken;
         this.fcmToken = fcmToken;
     }
     
@@ -49,6 +68,31 @@ public class FCMToken {
     
     public void setUserId(String userId) {
         this.userId = userId;
+    }
+    
+    public String getEmail() {
+        return email;
+    }
+    
+    public void setEmail(String email) {
+        this.email = email;
+    }
+    
+    public String getDisplayName() {
+        return displayName;
+    }
+    
+    public void setDisplayName(String displayName) {
+        this.displayName = displayName;
+    }
+    
+    public String getAccessToken() {
+        return accessToken;
+    }
+    
+    public void setAccessToken(String accessToken) {
+        this.accessToken = accessToken;
+        this.updatedAt = LocalDateTime.now();
     }
     
     public String getFcmToken() {

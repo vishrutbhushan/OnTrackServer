@@ -14,6 +14,7 @@ public class Item {
     private String snippet;
     private String sender;
     private String userId;
+    private String orderId;
 
     public Item() {}
 
@@ -22,6 +23,14 @@ public class Item {
         this.snippet = snippet;
         this.sender = sender;
         this.userId = userId;
+    }
+
+    public Item(String subject, String snippet, String sender, String userId, String orderId) {
+        this.subject = subject;
+        this.snippet = snippet;
+        this.sender = sender;
+        this.userId = userId;
+        this.orderId = orderId;
     }
 
     public Long getId() {
@@ -62,5 +71,13 @@ public class Item {
 
     public void setUserId(String userId) {
         this.userId = userId;
+    }
+
+    public String getOrderId() {
+        return orderId;
+    }
+
+    public void setOrderId(String orderId) {
+        this.orderId = orderId;
     }
 }

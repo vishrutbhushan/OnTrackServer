@@ -1,14 +1,11 @@
 package com.project.onTrackServer.controller;
 
 import com.project.onTrackServer.model.ApiResponse;
-import com.project.onTrackServer.model.FCMToken;
-import com.project.onTrackServer.repository.FCMTokenRepository;
+import com.project.onTrackServer.service.UserService;
 import com.project.onTrackServer.service.NotificationService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
-
-import java.util.Optional;
 
 /**
  * Controller for managing push notifications
@@ -17,9 +14,9 @@ import java.util.Optional;
 @RequestMapping("/api/notifications")
 @CrossOrigin(origins = "*")
 public class NotificationController {
-
+    
     @Autowired
-    private FCMTokenRepository fcmTokenRepository;
+    private UserService userService;
     
     @Autowired
     private NotificationService notificationService;
@@ -70,29 +67,18 @@ public class NotificationController {
     }
     
     /**
-     * Store FCM token for a user
+     * Store/Update FCM token for a user
      * @param userId The user ID
      * @param fcmToken The FCM token
      * @return Response indicating success/failure
      */
     @PostMapping("/fcm-token/{userId}")
-    public ResponseEntity<ApiResponse> storeFCMToken(@PathVariable String userId, @RequestParam String fcmToken) {
+    public ResponseEntity<ApiResponse> updateFcmToken(@PathVariable String userId, @RequestParam String fcmToken) {
         try {
-            Optional<FCMToken> existingToken = fcmTokenRepository.findByUserId(userId);
-            
-            FCMToken fcmTokenEntity;
-            if (existingToken.isPresent()) {
-                fcmTokenEntity = existingToken.get();
-                fcmTokenEntity.setFcmToken(fcmToken);
-            } else {
-                fcmTokenEntity = new FCMToken(userId, fcmToken);
-            }
-            
-            fcmTokenRepository.save(fcmTokenEntity);
-            
-            return ResponseEntity.ok(new ApiResponse(true, "FCM token stored successfully for user: " + userId));
+            userService.updateFcmToken(userId, fcmToken);
+            return ResponseEntity.ok(new ApiResponse(true, "FCM token updated successfully for user: " + userId));
         } catch (Exception e) {
-            return ResponseEntity.badRequest().body(new ApiResponse(false, "Failed to store FCM token: " + e.getMessage()));
+            return ResponseEntity.badRequest().body(new ApiResponse(false, "Failed to update FCM token: " + e.getMessage()));
         }
     }
 }

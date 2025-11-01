@@ -8,4 +8,5 @@ import java.util.List;
 @Repository
 public interface ItemRepository extends JpaRepository<Item, Long> {
     List<Item> findByUserIdOrderByIdDesc(String userId);
+    List<Item> findByUserIdAndSubjectAndSender(String userId, String subject, String sender);
 }

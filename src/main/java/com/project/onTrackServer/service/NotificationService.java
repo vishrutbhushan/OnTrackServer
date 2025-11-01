@@ -6,8 +6,8 @@ import com.google.firebase.messaging.FirebaseMessaging;
 import com.google.firebase.messaging.Message;
 import com.google.firebase.messaging.Notification;
 import com.google.auth.oauth2.GoogleCredentials;
-import com.project.onTrackServer.model.FCMToken;
-import com.project.onTrackServer.repository.FCMTokenRepository;
+import com.project.onTrackServer.model.User;
+import com.project.onTrackServer.repository.UserRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.ClassPathResource;
@@ -26,7 +26,7 @@ public class NotificationService {
     private static final Logger logger = LoggerFactory.getLogger(NotificationService.class);
     
     @Autowired
-    private FCMTokenRepository fcmTokenRepository;
+    private UserRepository userRepository;
     
     @Value("${google.cloud.project-id}")
     private String projectId;
@@ -61,14 +61,14 @@ public class NotificationService {
     public void sendNotification(String userId, String title, String messageBody) {
         try {
             // Get FCM token for the user
-            Optional<FCMToken> fcmTokenOpt = fcmTokenRepository.findByUserId(userId);
+            Optional<User> userOpt = userRepository.findByUserId(userId);
             
-            if (fcmTokenOpt.isEmpty()) {
+            if (userOpt.isEmpty() || userOpt.get().getFcmToken() == null) {
                 logger.warn("No FCM token found for user: {}", userId);
                 throw new RuntimeException("No FCM token found for user: " + userId);
             }
             
-            String fcmToken = fcmTokenOpt.get().getFcmToken();
+            String fcmToken = userOpt.get().getFcmToken();
             logger.info("Sending notification to user {}, FCM token: {}...", userId, fcmToken.substring(0, Math.min(fcmToken.length(), 20)));
             
             // Build the notification

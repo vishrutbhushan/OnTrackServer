@@ -1,9 +1,9 @@
 package com.project.onTrackServer.controller;
 
 import com.project.onTrackServer.model.Item;
-import com.project.onTrackServer.model.Token;
+import com.project.onTrackServer.model.User;
 import com.project.onTrackServer.repository.ItemRepository;
-import com.project.onTrackServer.repository.TokenRepository;
+import com.project.onTrackServer.repository.UserRepository;
 import com.project.onTrackServer.service.GmailService;
 import com.project.onTrackServer.exception.GmailAuthenticationException;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -25,7 +25,7 @@ public class ItemController {
     private ItemRepository itemRepository;
 
     @Autowired
-    private TokenRepository tokenRepository;
+    private UserRepository userRepository;
     
     @Autowired
     private GmailService gmailService;
@@ -78,14 +78,14 @@ public class ItemController {
      */
     @PostMapping("/fetch/{userId}")
     public ResponseEntity<List<Item>> fetchAndStoreEmails(@PathVariable String userId) {
-        Token token = tokenRepository.findByUserId(userId)
-            .orElseThrow(() -> new IllegalArgumentException("No token found for user: " + userId));
+        User user = userRepository.findByUserId(userId)
+            .orElseThrow(() -> new IllegalArgumentException("No user found with ID: " + userId));
         
-        if (token.getAccessToken() == null || "gmail_access_granted".equals(token.getAccessToken())) {
+        if (user.getAccessToken() == null || "gmail_access_granted".equals(user.getAccessToken())) {
             throw new IllegalStateException("No valid Gmail access token found for user: " + userId);
         }
         
-        List<Item> emailItems = gmailService.fetchEmailsFromGmail(token);
+        List<Item> emailItems = gmailService.fetchEmailsFromGmail(user);
         List<Item> savedEmails = emailItems.stream()
                 .map(itemRepository::save)
                 .toList();
