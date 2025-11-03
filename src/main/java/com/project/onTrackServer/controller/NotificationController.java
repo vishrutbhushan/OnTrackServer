@@ -73,7 +73,7 @@ public class NotificationController {
      * @return Response indicating success/failure
      */
     @PostMapping("/fcm-token/{userId}")
-    public ResponseEntity<ApiResponse> updateFcmToken(@PathVariable Long userId, @RequestParam String fcmToken) {
+    public ResponseEntity<ApiResponse> updateFcmToken(@PathVariable String userId, @RequestParam String fcmToken) {
         try {
             userService.updateFcmToken(userId, fcmToken);
             return ResponseEntity.ok(new ApiResponse(true, "FCM token updated successfully for user: " + userId));

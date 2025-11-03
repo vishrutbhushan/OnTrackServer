@@ -77,11 +77,11 @@ public class ItemController {
      * @return List of fetched and stored emails
      */
     @PostMapping("/fetch/{userId}")
-    public ResponseEntity<List<Item>> fetchAndStoreEmails(@PathVariable Long userId) {
-        User user = userRepository.findByUserIdAndNotDeleted(userId)
+    public ResponseEntity<List<Item>> fetchAndStoreEmails(@PathVariable String userId) {
+        User user = userRepository.findByUserId(userId)
             .orElseThrow(() -> new IllegalArgumentException("No user found with ID: " + userId));
         
-        if (user.getAuthToken() == null || "gmail_access_granted".equals(user.getAuthToken())) {
+        if (user.getAccessToken() == null || "gmail_access_granted".equals(user.getAccessToken())) {
             throw new IllegalStateException("No valid Gmail access token found for user: " + userId);
         }
         

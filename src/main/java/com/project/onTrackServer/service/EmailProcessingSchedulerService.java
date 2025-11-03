@@ -107,8 +107,8 @@ public class EmailProcessingSchedulerService {
     
     private boolean hasValidAccessToken(User user) {
         return user != null && 
-               user.getAuthToken() != null && 
-               !user.getAuthToken().equals("gmail_access_granted") &&
-               !user.getAuthToken().trim().isEmpty();
+               user.getAccessToken() != null && 
+               !user.getAccessToken().equals("gmail_access_granted") &&
+               !user.getAccessToken().trim().isEmpty();
     }
 }

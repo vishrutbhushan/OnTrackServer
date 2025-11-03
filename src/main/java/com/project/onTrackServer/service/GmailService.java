@@ -50,7 +50,7 @@ public class GmailService {
             logger.info("Found {} messages for user: {}", messages.size(), user.getUserId());
             
             return messages.stream()
-                .map(message -> getEmailItem(service, message, user.getUserId().toString()))
+                .map(message -> getEmailItem(service, message, user.getUserId()))
                 .filter(item -> item != null)
                 .toList();
                 
@@ -94,11 +94,11 @@ public class GmailService {
             List<Item> newEmails = new ArrayList<>();
             
             for (Message message : messages) {
-                Item emailItem = getEmailItem(service, message, user.getUserId().toString());
+                Item emailItem = getEmailItem(service, message, user.getUserId());
                 if (emailItem != null) {
                     // Check if this email already exists in the database
                     List<Item> existingItems = itemRepository.findByUserIdAndSubjectAndSender(
-                        user.getUserId().toString(), emailItem.getSubject(), emailItem.getSender());
+                        user.getUserId(), emailItem.getSubject(), emailItem.getSender());
                     
                     // If no existing email with same subject and sender, consider it new
                     if (existingItems.isEmpty()) {
@@ -163,14 +163,14 @@ public class GmailService {
     
     private Gmail getGmailService(User user) {
         try {
-            if (user.getAuthToken() == null || user.getAuthToken().equals("gmail_access_granted")) {
+            if (user.getAccessToken() == null || user.getAccessToken().equals("gmail_access_granted")) {
                 throw new IllegalStateException("No valid access token available for user: " + user.getUserId());
             }
             
             final NetHttpTransport HTTP_TRANSPORT = GoogleNetHttpTransport.newTrustedTransport();
             
             Date expiryTime = new Date(System.currentTimeMillis() + (24 * 60 * 60 * 1000));
-            AccessToken accessToken = new AccessToken(user.getAuthToken(), expiryTime);
+            AccessToken accessToken = new AccessToken(user.getAccessToken(), expiryTime);
             
             GoogleCredentials credentials = new GoogleCredentials(accessToken) {
                 @Override

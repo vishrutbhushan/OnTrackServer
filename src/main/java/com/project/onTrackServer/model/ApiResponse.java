@@ -1,9 +1,9 @@
 package com.project.onTrackServer.model;
 
-public class ApiResponse<T> {
+public class ApiResponse {
     private boolean success;
     private String message;
-    private T data;
+    private Object data;
 
     public ApiResponse() {}
 
@@ -12,7 +12,7 @@ public class ApiResponse<T> {
         this.message = message;
     }
 
-    public ApiResponse(boolean success, String message, T data) {
+    public ApiResponse(boolean success, String message, Object data) {
         this.success = success;
         this.message = message;
         this.data = data;
@@ -35,11 +35,11 @@ public class ApiResponse<T> {
         this.message = message;
     }
 
-    public T getData() {
+    public Object getData() {
         return data;
     }
 
-    public void setData(T data) {
+    public void setData(Object data) {
         this.data = data;
     }
 }

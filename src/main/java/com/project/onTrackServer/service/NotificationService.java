@@ -39,20 +39,14 @@ public class NotificationService {
             if (FirebaseApp.getApps().isEmpty()) {
                 // Load service account key from classpath
                 ClassPathResource resource = new ClassPathResource("service-account-key.json");
-                if (resource.exists()) {
-                    try (InputStream serviceAccountStream = resource.getInputStream()) {
-                        FirebaseOptions options = FirebaseOptions.builder()
-                                .setCredentials(GoogleCredentials.fromStream(serviceAccountStream))
-                                .setProjectId(projectId)
-                                .build();
-                        
-                        firebaseApp = FirebaseApp.initializeApp(options);
-                        logger.info("Firebase Admin SDK initialized successfully for project: {}", projectId);
-                    }
-                } else {
-                    logger.warn("Firebase service account key file not found. Firebase notifications will be disabled.");
-                    // Initialize without Firebase for development/testing
-                    firebaseApp = null;
+                try (InputStream serviceAccountStream = resource.getInputStream()) {
+                    FirebaseOptions options = FirebaseOptions.builder()
+                            .setCredentials(GoogleCredentials.fromStream(serviceAccountStream))
+                            .setProjectId(projectId)
+                            .build();
+                    
+                    firebaseApp = FirebaseApp.initializeApp(options);
+                    logger.info("Firebase Admin SDK initialized successfully for project: {}", projectId);
                 }
             } else {
                 firebaseApp = FirebaseApp.getInstance();
@@ -60,20 +54,14 @@ public class NotificationService {
             }
         } catch (IOException e) {
             logger.error("Failed to initialize Firebase Admin SDK: {}", e.getMessage(), e);
-            logger.warn("Continuing without Firebase notifications...");
-            firebaseApp = null;
+            throw new RuntimeException("Firebase initialization failed", e);
         }
     }
 
     public void sendNotification(String userId, String title, String messageBody) {
         try {
-            if (firebaseApp == null) {
-                logger.warn("Firebase not initialized. Skipping notification for user: {}", userId);
-                return;
-            }
-            
             // Get FCM token for the user
-            Optional<User> userOpt = userRepository.findByUserIdAndNotDeleted(Long.valueOf(userId));
+            Optional<User> userOpt = userRepository.findByUserId(userId);
             
             if (userOpt.isEmpty() || userOpt.get().getFcmToken() == null) {
                 logger.warn("No FCM token found for user: {}", userId);
