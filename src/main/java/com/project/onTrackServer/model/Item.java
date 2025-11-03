@@ -15,6 +15,10 @@ public class Item {
     private Long id;
     private String subject;
     private String snippet;
+    
+    @Column(columnDefinition = "LONGTEXT")
+    private String body; // Full email body
+    
     private String sender;
     private String userId;
     private String orderId;

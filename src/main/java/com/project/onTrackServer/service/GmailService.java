@@ -19,6 +19,8 @@ import org.springframework.stereotype.Service;
 
 import java.io.IOException;
 import java.security.GeneralSecurityException;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
@@ -75,17 +77,26 @@ public class GmailService {
         try {
             Gmail service = getGmailService(user);
             
-            String query = "is:unread";
+            // Build query to fetch emails newer than the last processed email
+            String query = "";
+            int maxResults = 10; // Default: fetch last 10 for first time
             
-            // If we have a last processed email, fetch only newer ones
-            if (user.getUserConfig() != null && user.getUserConfig().getLastProcessedEmailId() != null) {
-                query += " after:" + user.getUserConfig().getLastProcessedEmailTime();
+            // If we have a last processed email time, fetch only newer ones
+            if (user.getUserConfig() != null && user.getUserConfig().getLastProcessedEmailTime() != null) {
+                LocalDateTime lastTime = user.getUserConfig().getLastProcessedEmailTime();
+                // Format: after:2023/12/25 for Gmail API
+                String dateStr = lastTime.format(DateTimeFormatter.ofPattern("yyyy/MM/dd"));
+                query = "after:" + dateStr;
+                maxResults = 50; // Fetch more after first run to catch up
+                log.info("Fetching emails after: {} (subsequent run)", dateStr);
+            } else {
+                log.info("First run - fetching last 10 emails");
             }
             
-            // Fetch recent emails
+            // Fetch emails
             ListMessagesResponse listResponse = service.users().messages()
                 .list("me")
-                .setMaxResults(10L) // Reduced from 50 to only get new emails since last processed
+                .setMaxResults((long)maxResults)
                 .setQ(query)
                 .execute();
                 
@@ -95,7 +106,10 @@ public class GmailService {
                 return new ArrayList<>();
             }
             
-            log.info("Found {} new messages for user: {}", messages.size(), user.getUserId());
+            log.info("Found {} messages from Gmail API for user: {}", messages.size(), user.getUserId());
+            
+            // Reverse to process oldest first
+            java.util.Collections.reverse(messages);
             
             List<Item> newEmails = new ArrayList<>();
             
@@ -105,6 +119,8 @@ public class GmailService {
                     // Check if this email already exists in the database by Gmail message ID
                     if (!itemRepository.existsByGmailMessageId(emailItem.getGmailMessageId())) {
                         newEmails.add(emailItem);
+                    } else {
+                        log.debug("Email with message ID {} already processed, skipping", emailItem.getGmailMessageId());
                     }
                 }
             }
@@ -132,7 +148,7 @@ public class GmailService {
         try {
             Message fullMessage = service.users().messages()
                 .get("me", message.getId())
-                .setFormat("metadata")
+                .setFormat("full")  // Changed from "metadata" to "full" to fetch complete email body
                 .execute();
                 
             String subject = "No Subject";
@@ -153,6 +169,11 @@ public class GmailService {
             item.setSubject(subject);
             item.setSender(from);
             item.setSnippet(fullMessage.getSnippet() != null ? fullMessage.getSnippet() : "");
+            
+            // Extract and set the full email body
+            String body = extractEmailBody(fullMessage);
+            item.setBody(body != null ? body : "");
+            
             return item;
             
         } catch (Exception e) {
@@ -166,6 +187,52 @@ public class GmailService {
             return fromHeader.substring(fromHeader.indexOf("<") + 1, fromHeader.indexOf(">"));
         }
         return fromHeader;
+    }
+    
+    private String extractEmailBody(Message message) {
+        try {
+            if (message.getPayload() == null) {
+                return "";
+            }
+            
+            // Try to get body from payload
+            if (message.getPayload().getBody() != null && message.getPayload().getBody().getData() != null) {
+                String data = message.getPayload().getBody().getData();
+                // Decode base64url encoded data
+                byte[] decoded = java.util.Base64.getUrlDecoder().decode(data);
+                return new String(decoded, java.nio.charset.StandardCharsets.UTF_8);
+            }
+            
+            // If payload has parts (multipart email), extract text from parts
+            if (message.getPayload().getParts() != null && !message.getPayload().getParts().isEmpty()) {
+                for (com.google.api.services.gmail.model.MessagePart part : message.getPayload().getParts()) {
+                    // Look for plain text part
+                    if (part.getMimeType() != null && part.getMimeType().equals("text/plain")) {
+                        if (part.getBody() != null && part.getBody().getData() != null) {
+                            String data = part.getBody().getData();
+                            byte[] decoded = java.util.Base64.getUrlDecoder().decode(data);
+                            return new String(decoded, java.nio.charset.StandardCharsets.UTF_8);
+                        }
+                    }
+                }
+                
+                // If no plain text found, try HTML
+                for (com.google.api.services.gmail.model.MessagePart part : message.getPayload().getParts()) {
+                    if (part.getMimeType() != null && part.getMimeType().equals("text/html")) {
+                        if (part.getBody() != null && part.getBody().getData() != null) {
+                            String data = part.getBody().getData();
+                            byte[] decoded = java.util.Base64.getUrlDecoder().decode(data);
+                            return new String(decoded, java.nio.charset.StandardCharsets.UTF_8);
+                        }
+                    }
+                }
+            }
+            
+            return "";
+        } catch (Exception e) {
+            log.warn("Error extracting email body: {}", e.getMessage());
+            return "";
+        }
     }
     
     public void archiveEmail(User user, String messageId) {

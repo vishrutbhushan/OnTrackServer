@@ -100,12 +100,10 @@ public class EmailProcessingSchedulerService {
             List<Item> newEmails = gmailService.fetchNewEmailsFromGmail(user, itemRepository);
             
             if (!newEmails.isEmpty()) {
-                logger.info("Found {} new emails for user: {}", newEmails.size(), user.getUserId());
-                
                 for (Item email : newEmails) {
                     // Filter email by platform if user has defined platforms
                     if (!userPlatforms.isEmpty() && !isPlatformAllowed(email.getSender(), userPlatforms)) {
-                        logger.debug("Email from {} not in user's allowed platforms, skipping", email.getSender());
+                        logger.info("Email from {} skipped - not in user's allowed platforms", email.getSender());
                         continue;
                     }
                     
@@ -157,7 +155,8 @@ public class EmailProcessingSchedulerService {
             }
         }
         
-        logger.debug("Email from {} does not match any user platform", senderEmail);
+        logger.info("Email from {} SKIPPED - does not match any user's configured platforms (user has {} platforms)", 
+            senderEmail, userPlatforms.size());
         return false;
     }
     
@@ -186,7 +185,8 @@ public class EmailProcessingSchedulerService {
                 email.getSubject(), email.getSender());
             
             GeminiEmailAnalysisService.EmailAnalysisResult analysis = 
-                emailAnalysisService.analyzeEmail(email.getSnippet(), email.getSubject(), email.getSender(), userCategories);
+                emailAnalysisService.analyzeEmail(email.getBody() != null ? email.getBody() : email.getSnippet(), 
+                    email.getSubject(), email.getSender(), userCategories);
             
             logger.info("Gemini analysis result - isOrderRelated: {}, orderId: {}, isNewOrder: {}, shipmentStatus: {}", 
                 analysis.isOrderRelatedEmail(), analysis.getOrderId(), analysis.isNewOrder(), analysis.getShipmentStatus());
@@ -195,23 +195,11 @@ public class EmailProcessingSchedulerService {
             if (analysis.isOrderRelatedEmail()) {
                 logger.info("Email identified as order-related");
                 
-                email.setOrderId(analysis.getOrderId());
-                
-                // Store the order ID in snippet field for reference
-                String originalSnippet = email.getSnippet();
-                String enhancedSnippet = analysis.getOrderId() != null ? 
-                    "Order ID: " + analysis.getOrderId() + " | " + originalSnippet : originalSnippet;
-                email.setSnippet(enhancedSnippet);
-                
-                itemRepository.save(email);
-                logger.info("Saved order-related email for user: {} with order ID: {}", 
-                    user.getUserId(), analysis.getOrderId());
-                
                 // Extract platform name from sender email
                 String platformName = extractPlatformName(email.getSender());
                 logger.debug("Extracted platform name: {}", platformName);
                 
-                // Create or update order
+                // Create or update order (do NOT save to Item table)
                 handleOrderCreationOrUpdate(user, analysis, platformName);
                 
                 // Archive email if auto-archive is enabled in user config
@@ -238,7 +226,7 @@ public class EmailProcessingSchedulerService {
                 }
                 
             } else {
-                logger.debug("Email NOT identified as order-related from sender: {}", email.getSender());
+                logger.info("Email skipped - NOT order-related from sender: {}", email.getSender());
             }
             
         } catch (Exception e) {
@@ -249,8 +237,6 @@ public class EmailProcessingSchedulerService {
     
     private void handleOrderCreationOrUpdate(User user, GeminiEmailAnalysisService.EmailAnalysisResult analysis, String platformName) {
         try {
-            logger.info("handleOrderCreationOrUpdate called for user: {}", user.getUserId());
-            
             if (analysis.getOrderId() == null) {
                 logger.warn("Order ID is null in analysis result, skipping order creation for user: {}", user.getUserId());
                 return;
@@ -262,7 +248,7 @@ public class EmailProcessingSchedulerService {
             // Check if order already exists
             Optional<Order> existingOrder = orderRepository.findByOrderId(analysis.getOrderId());
             
-            if (existingOrder.isPresent() && !analysis.isNewOrder()) {
+            if (existingOrder.isPresent()) {
                 logger.info("Order {} already exists, updating it", analysis.getOrderId());
                 
                 // Update existing order
@@ -295,7 +281,21 @@ public class EmailProcessingSchedulerService {
                     logger.warn("Failed to send notification for new order {}: {}", analysis.getOrderId(), notifException.getMessage());
                 }
             } else {
-                logger.warn("Order {} exists but isNewOrder=false, not updating", analysis.getOrderId());
+                // Order doesn't exist and isNewOrder=false, but we have an order ID so create it
+                logger.info("Order not found but has valid order ID, creating new order: {} for user: {}", analysis.getOrderId(), user.getUserId());
+                
+                // Create new order from email data
+                Order newOrder = createNewOrder(user, analysis, platformName);
+                Order savedOrder = orderRepository.save(newOrder);
+                
+                logger.info("Successfully created order from email data: {} for user: {}", savedOrder.getId(), user.getUserId());
+                
+                String message = "Order " + analysis.getOrderId() + " created from email - Status: " + analysis.getShipmentStatus();
+                try {
+                    notificationService.sendNotification(user.getUserId(), "Order Added", message);
+                } catch (Exception notifException) {
+                    logger.warn("Failed to send notification for order {}: {}", analysis.getOrderId(), notifException.getMessage());
+                }
             }
             
         } catch (Exception e) {
@@ -315,17 +315,26 @@ public class EmailProcessingSchedulerService {
         
         if (analysis.getPrice() != null) {
             order.setPrice(BigDecimal.valueOf(analysis.getPrice()));
+            logger.debug("Order price: {}", analysis.getPrice());
+        } else {
+            // Set default price to 0 if not provided
+            order.setPrice(BigDecimal.ZERO);
         }
         
-        order.setOrderDate(parseDateTime(analysis.getOrderDate()));
+        LocalDateTime orderDate = parseDateTime(analysis.getOrderDate());
+        if (orderDate == null) {
+            orderDate = LocalDateTime.now();
+            logger.debug("Order date was null, using current timestamp: {}", orderDate);
+        }
+        order.setOrderDate(orderDate);
         order.setDeliveryDate(parseDateTime(analysis.getDeliveryDate()));
         order.setShipmentStatus(analysis.getShipmentStatus());
         order.setCreateUser(user.getUserId());
         order.setUpdateUser(user.getUserId());
         
-        logger.debug("Order object created: orderId={}, price={}, quantity={}, status={}, orderDate={}, deliveryDate={}", 
+        logger.info("New Order prepared: orderId={}, price={}, quantity={}, status={}, orderDate={}, deliveryDate={}, productLink={}", 
             order.getOrderId(), order.getPrice(), order.getQuantity(), order.getShipmentStatus(), 
-            order.getOrderDate(), order.getDeliveryDate());
+            order.getOrderDate(), order.getDeliveryDate(), order.getProductLink());
         
         return order;
     }
@@ -333,30 +342,37 @@ public class EmailProcessingSchedulerService {
     private void updateOrder(Order order, GeminiEmailAnalysisService.EmailAnalysisResult analysis, User user) {
         logger.debug("Updating order: {} for user: {}", order.getOrderId(), user.getUserId());
         
+        StringBuilder updateLog = new StringBuilder("Order update fields: ");
+        
         if (analysis.getPrice() != null) {
             order.setPrice(BigDecimal.valueOf(analysis.getPrice()));
+            updateLog.append("price=").append(analysis.getPrice()).append(" ");
         }
         
         if (analysis.getQuantity() != null) {
             order.setQuantity(analysis.getQuantity());
+            updateLog.append("quantity=").append(analysis.getQuantity()).append(" ");
         }
         
         if (analysis.getProductLink() != null) {
             order.setProductLink(analysis.getProductLink());
+            updateLog.append("productLink=present ");
         }
         
         if (analysis.getDeliveryDate() != null) {
             order.setDeliveryDate(parseDateTime(analysis.getDeliveryDate()));
+            updateLog.append("deliveryDate=").append(analysis.getDeliveryDate()).append(" ");
         }
         
         if (analysis.getShipmentStatus() != null) {
-            logger.debug("Updating order status from {} to {}", order.getShipmentStatus(), analysis.getShipmentStatus());
+            String oldStatus = order.getShipmentStatus();
             order.setShipmentStatus(analysis.getShipmentStatus());
+            updateLog.append("status=").append(oldStatus).append("->").append(analysis.getShipmentStatus()).append(" ");
         }
         
         order.setUpdateUser(user.getUserId());
-        logger.debug("Order update complete: orderId={}, price={}, quantity={}, status={}, deliveryDate={}", 
-            order.getOrderId(), order.getPrice(), order.getQuantity(), order.getShipmentStatus(), order.getDeliveryDate());
+        
+        logger.info("{}", updateLog.toString());
     }
     
     private String extractPlatformName(String senderEmail) {
