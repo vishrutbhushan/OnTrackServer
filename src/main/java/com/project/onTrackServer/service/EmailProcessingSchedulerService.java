@@ -2,8 +2,15 @@ package com.project.onTrackServer.service;
 
 import com.project.onTrackServer.model.Item;
 import com.project.onTrackServer.model.User;
+import com.project.onTrackServer.model.Order;
+import com.project.onTrackServer.model.Platform;
+import com.project.onTrackServer.model.Category;
 import com.project.onTrackServer.repository.ItemRepository;
 import com.project.onTrackServer.repository.UserRepository;
+import com.project.onTrackServer.repository.OrderRepository;
+import com.project.onTrackServer.repository.UserConfigRepository;
+import com.project.onTrackServer.repository.PlatformRepository;
+import com.project.onTrackServer.repository.CategoryRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -12,7 +19,12 @@ import org.springframework.stereotype.Service;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.List;
+import java.util.Optional;
+import java.util.Map;
+import java.math.BigDecimal;
 
 @Service
 @ConditionalOnProperty(name = "email.processing.schedule.enabled", havingValue = "true", matchIfMissing = true)
@@ -27,10 +39,25 @@ public class EmailProcessingSchedulerService {
     private ItemRepository itemRepository;
     
     @Autowired
+    private UserConfigRepository userConfigRepository;
+    
+    @Autowired
+    private PlatformRepository platformRepository;
+    
+    @Autowired
+    private CategoryRepository categoryRepository;
+    
+    @Autowired
     private GmailService gmailService;
     
     @Autowired
     private GeminiEmailAnalysisService emailAnalysisService;
+    
+    @Autowired
+    private OrderRepository orderRepository;
+    
+    @Autowired
+    private NotificationService notificationService;
     
     @Value("${email.processing.schedule.interval:10}")
     private int intervalMinutes;
@@ -59,13 +86,34 @@ public class EmailProcessingSchedulerService {
         try {
             logger.info("Processing emails for user: {}", user.getUserId());
             
+            // Get user's platforms
+            List<Platform> userPlatforms = platformRepository.findByUserAndIsDeletedFalse(user);
+            logger.debug("User has {} platforms", userPlatforms.size());
+            
+            // Get user's categories
+            List<Category> userCategories = categoryRepository.findByUserAndIsDeletedFalse(user);
+            List<String> categoryNames = userCategories.stream()
+                .map(Category::getCategoryName)
+                .toList();
+            logger.debug("User has {} categories: {}", userCategories.size(), categoryNames);
+            
             List<Item> newEmails = gmailService.fetchNewEmailsFromGmail(user, itemRepository);
             
             if (!newEmails.isEmpty()) {
                 logger.info("Found {} new emails for user: {}", newEmails.size(), user.getUserId());
                 
                 for (Item email : newEmails) {
-                    processAndSaveEmail(email);
+                    // Filter email by platform if user has defined platforms
+                    if (!userPlatforms.isEmpty() && !isPlatformAllowed(email.getSender(), userPlatforms)) {
+                        logger.debug("Email from {} not in user's allowed platforms, skipping", email.getSender());
+                        continue;
+                    }
+                    
+                    processAndSaveEmail(email, user, categoryNames);
+                    // Update the user config with the last processed email info
+                    if (email.getGmailMessageId() != null) {
+                        updateLastProcessedEmail(user, email.getGmailMessageId());
+                    }
                 }
                 
             } else {
@@ -77,17 +125,79 @@ public class EmailProcessingSchedulerService {
         }
     }
     
-    private void processAndSaveEmail(Item email) {
-        try {
-            // Analyze email with Gemini AI
-            GeminiEmailAnalysisService.EmailAnalysisResult analysis = 
-                emailAnalysisService.analyzeEmail(email.getSnippet(), email.getSubject(), email.getSender());
+    private boolean isPlatformAllowed(String senderEmail, List<Platform> userPlatforms) {
+        if (senderEmail == null || senderEmail.isEmpty()) {
+            logger.debug("Sender email is null or empty");
+            return false;
+        }
+        
+        String senderLower = senderEmail.toLowerCase();
+        
+        // Map of common platform email domains
+        Map<String, List<String>> platformEmailDomains = new java.util.HashMap<>();
+        platformEmailDomains.put("Amazon", List.of("@amazon.com", "@amazon.in", "@amazonses.com"));
+        platformEmailDomains.put("Flipkart", List.of("@flipkart.com", "@fkart.com"));
+        platformEmailDomains.put("eBay", List.of("@ebay.com"));
+        platformEmailDomains.put("Walmart", List.of("@walmart.com"));
+        platformEmailDomains.put("Target", List.of("@target.com"));
+        platformEmailDomains.put("Best Buy", List.of("@bestbuy.com"));
+        platformEmailDomains.put("Shopify", List.of("@shopify.com"));
+        platformEmailDomains.put("Etsy", List.of("@etsy.com"));
+        platformEmailDomains.put("AliExpress", List.of("@aliexpress.com"));
+        
+        for (Platform platform : userPlatforms) {
+            String platformName = platform.getPlatformName();
+            List<String> domains = platformEmailDomains.getOrDefault(platformName, List.of());
             
-            // Only save order-related emails
+            for (String domain : domains) {
+                if (senderLower.contains(domain)) {
+                    logger.debug("Email from {} matches platform {}", senderEmail, platformName);
+                    return true;
+                }
+            }
+        }
+        
+        logger.debug("Email from {} does not match any user platform", senderEmail);
+        return false;
+    }
+    
+    private void updateLastProcessedEmail(User user, String messageId) {
+        try {
+            if (user.getUserConfig() != null) {
+                user.getUserConfig().setLastProcessedEmailId(messageId);
+                user.getUserConfig().setLastProcessedEmailTime(LocalDateTime.now());
+                userConfigRepository.save(user.getUserConfig());
+                logger.debug("Updated last processed email for user: {} with message ID: {}", user.getUserId(), messageId);
+            }
+        } catch (Exception e) {
+            logger.warn("Failed to update last processed email info for user {}: {}", user.getUserId(), e.getMessage());
+        }
+    }
+    
+    private void processAndSaveEmail(Item email, User user, List<String> userCategories) {
+        try {
+            email.setUserId(user.getUserId());
+            
+            logger.info("Processing email from sender: {} with subject: {} for user: {}", 
+                email.getSender(), email.getSubject(), user.getUserId());
+            
+            // Analyze email with Gemini AI
+            logger.debug("Sending email to Gemini for analysis - Subject: {}, Sender: {}", 
+                email.getSubject(), email.getSender());
+            
+            GeminiEmailAnalysisService.EmailAnalysisResult analysis = 
+                emailAnalysisService.analyzeEmail(email.getSnippet(), email.getSubject(), email.getSender(), userCategories);
+            
+            logger.info("Gemini analysis result - isOrderRelated: {}, orderId: {}, isNewOrder: {}, shipmentStatus: {}", 
+                analysis.isOrderRelatedEmail(), analysis.getOrderId(), analysis.isNewOrder(), analysis.getShipmentStatus());
+            
+            // Only process order-related emails
             if (analysis.isOrderRelatedEmail()) {
+                logger.info("Email identified as order-related");
+                
                 email.setOrderId(analysis.getOrderId());
                 
-                // Store the order ID in snippet field for now as requested
+                // Store the order ID in snippet field for reference
                 String originalSnippet = email.getSnippet();
                 String enhancedSnippet = analysis.getOrderId() != null ? 
                     "Order ID: " + analysis.getOrderId() + " | " + originalSnippet : originalSnippet;
@@ -95,13 +205,203 @@ public class EmailProcessingSchedulerService {
                 
                 itemRepository.save(email);
                 logger.info("Saved order-related email for user: {} with order ID: {}", 
-                    email.getUserId(), analysis.getOrderId());
+                    user.getUserId(), analysis.getOrderId());
+                
+                // Extract platform name from sender email
+                String platformName = extractPlatformName(email.getSender());
+                logger.debug("Extracted platform name: {}", platformName);
+                
+                // Create or update order
+                handleOrderCreationOrUpdate(user, analysis, platformName);
+                
+                // Archive email if auto-archive is enabled in user config
+                if (user.getUserConfig() != null && 
+                    user.getUserConfig().getAutoArchiveOrderEmails() != null &&
+                    user.getUserConfig().getAutoArchiveOrderEmails()) {
+                    
+                    logger.debug("Auto-archive is enabled for user: {}", user.getUserId());
+                    
+                    if (email.getGmailMessageId() != null) {
+                        gmailService.archiveEmail(user, email.getGmailMessageId());
+                        logger.info("Archived order email for user: {} with message ID: {}", 
+                            user.getUserId(), email.getGmailMessageId());
+                    } else {
+                        logger.warn("Gmail message ID is null, cannot archive email for user: {}", user.getUserId());
+                    }
+                } else {
+                    logger.debug("Auto-archive is disabled for user: {}", user.getUserId());
+                }
+                
+                // Update the user config with the last processed email info
+                if (email.getGmailMessageId() != null) {
+                    updateLastProcessedEmail(user, email.getGmailMessageId());
+                }
+                
             } else {
-                logger.debug("Skipped non-order email for user: {}", email.getUserId());
+                logger.debug("Email NOT identified as order-related from sender: {}", email.getSender());
             }
             
         } catch (Exception e) {
-            logger.error("Error processing email: {}", e.getMessage());
+            logger.error("Error processing email from sender {} for user {}: {}", 
+                email.getSender(), user.getUserId(), e.getMessage(), e);
+        }
+    }
+    
+    private void handleOrderCreationOrUpdate(User user, GeminiEmailAnalysisService.EmailAnalysisResult analysis, String platformName) {
+        try {
+            logger.info("handleOrderCreationOrUpdate called for user: {}", user.getUserId());
+            
+            if (analysis.getOrderId() == null) {
+                logger.warn("Order ID is null in analysis result, skipping order creation for user: {}", user.getUserId());
+                return;
+            }
+            
+            logger.info("Processing order: {} for user: {} (isNewOrder: {})", 
+                analysis.getOrderId(), user.getUserId(), analysis.isNewOrder());
+            
+            // Check if order already exists
+            Optional<Order> existingOrder = orderRepository.findByOrderId(analysis.getOrderId());
+            
+            if (existingOrder.isPresent() && !analysis.isNewOrder()) {
+                logger.info("Order {} already exists, updating it", analysis.getOrderId());
+                
+                // Update existing order
+                Order order = existingOrder.get();
+                updateOrder(order, analysis, user);
+                Order savedOrder = orderRepository.save(order);
+                
+                logger.info("Successfully updated order: {} for user: {}", savedOrder.getId(), user.getUserId());
+                
+                String message = "Order " + analysis.getOrderId() + " updated - Status: " + analysis.getShipmentStatus();
+                try {
+                    notificationService.sendNotification(user.getUserId(), "Order Update", message);
+                } catch (Exception notifException) {
+                    logger.warn("Failed to send notification for order update {}: {}", analysis.getOrderId(), notifException.getMessage());
+                }
+                
+            } else if (analysis.isNewOrder()) {
+                logger.info("Creating new order: {} for user: {}", analysis.getOrderId(), user.getUserId());
+                
+                // Create new order
+                Order newOrder = createNewOrder(user, analysis, platformName);
+                Order savedOrder = orderRepository.save(newOrder);
+                
+                logger.info("Successfully created new order with ID: {} for user: {}", savedOrder.getId(), user.getUserId());
+                
+                String message = "New order confirmed - Order ID: " + analysis.getOrderId();
+                try {
+                    notificationService.sendNotification(user.getUserId(), "Order Confirmed", message);
+                } catch (Exception notifException) {
+                    logger.warn("Failed to send notification for new order {}: {}", analysis.getOrderId(), notifException.getMessage());
+                }
+            } else {
+                logger.warn("Order {} exists but isNewOrder=false, not updating", analysis.getOrderId());
+            }
+            
+        } catch (Exception e) {
+            logger.error("Error handling order creation/update for order {} and user {}: {}", 
+                analysis.getOrderId(), user.getUserId(), e.getMessage(), e);
+        }
+    }
+    
+    private Order createNewOrder(User user, GeminiEmailAnalysisService.EmailAnalysisResult analysis, String platformName) {
+        logger.debug("Creating new order with ID: {} for user: {}", analysis.getOrderId(), user.getUserId());
+        
+        Order order = new Order();
+        order.setUser(user);
+        order.setOrderId(analysis.getOrderId());
+        order.setProductLink(analysis.getProductLink());
+        order.setQuantity(analysis.getQuantity() != null ? analysis.getQuantity() : 1);
+        
+        if (analysis.getPrice() != null) {
+            order.setPrice(BigDecimal.valueOf(analysis.getPrice()));
+        }
+        
+        order.setOrderDate(parseDateTime(analysis.getOrderDate()));
+        order.setDeliveryDate(parseDateTime(analysis.getDeliveryDate()));
+        order.setShipmentStatus(analysis.getShipmentStatus());
+        order.setCreateUser(user.getUserId());
+        order.setUpdateUser(user.getUserId());
+        
+        logger.debug("Order object created: orderId={}, price={}, quantity={}, status={}, orderDate={}, deliveryDate={}", 
+            order.getOrderId(), order.getPrice(), order.getQuantity(), order.getShipmentStatus(), 
+            order.getOrderDate(), order.getDeliveryDate());
+        
+        return order;
+    }
+    
+    private void updateOrder(Order order, GeminiEmailAnalysisService.EmailAnalysisResult analysis, User user) {
+        logger.debug("Updating order: {} for user: {}", order.getOrderId(), user.getUserId());
+        
+        if (analysis.getPrice() != null) {
+            order.setPrice(BigDecimal.valueOf(analysis.getPrice()));
+        }
+        
+        if (analysis.getQuantity() != null) {
+            order.setQuantity(analysis.getQuantity());
+        }
+        
+        if (analysis.getProductLink() != null) {
+            order.setProductLink(analysis.getProductLink());
+        }
+        
+        if (analysis.getDeliveryDate() != null) {
+            order.setDeliveryDate(parseDateTime(analysis.getDeliveryDate()));
+        }
+        
+        if (analysis.getShipmentStatus() != null) {
+            logger.debug("Updating order status from {} to {}", order.getShipmentStatus(), analysis.getShipmentStatus());
+            order.setShipmentStatus(analysis.getShipmentStatus());
+        }
+        
+        order.setUpdateUser(user.getUserId());
+        logger.debug("Order update complete: orderId={}, price={}, quantity={}, status={}, deliveryDate={}", 
+            order.getOrderId(), order.getPrice(), order.getQuantity(), order.getShipmentStatus(), order.getDeliveryDate());
+    }
+    
+    private String extractPlatformName(String senderEmail) {
+        if (senderEmail == null || senderEmail.isEmpty()) {
+            return null;
+        }
+        
+        senderEmail = senderEmail.toLowerCase();
+        
+        // Simple contains matching for platform names
+        if (senderEmail.contains("amazon")) return "Amazon";
+        if (senderEmail.contains("flipkart")) return "Flipkart";
+        if (senderEmail.contains("ebay")) return "eBay";
+        if (senderEmail.contains("walmart")) return "Walmart";
+        if (senderEmail.contains("target")) return "Target";
+        if (senderEmail.contains("bestbuy")) return "Best Buy";
+        if (senderEmail.contains("shopify")) return "Shopify";
+        if (senderEmail.contains("etsy")) return "Etsy";
+        if (senderEmail.contains("aliexpress")) return "AliExpress";
+        
+        return null;
+    }
+    
+    private LocalDateTime parseDateTime(String dateTimeStr) {
+        if (dateTimeStr == null || dateTimeStr.isEmpty()) {
+            logger.debug("DateTime string is null or empty");
+            return null;
+        }
+        
+        try {
+            // Try ISO 8601 format first
+            LocalDateTime parsed = LocalDateTime.parse(dateTimeStr, DateTimeFormatter.ISO_DATE_TIME);
+            logger.debug("Successfully parsed datetime: {} -> {}", dateTimeStr, parsed);
+            return parsed;
+        } catch (Exception e1) {
+            try {
+                // Try alternative formats
+                LocalDateTime parsed = LocalDateTime.parse(dateTimeStr.replace("Z", ""), 
+                    DateTimeFormatter.ISO_DATE_TIME);
+                logger.debug("Successfully parsed datetime (alternative format): {} -> {}", dateTimeStr, parsed);
+                return parsed;
+            } catch (Exception e2) {
+                logger.warn("Could not parse datetime: {} (error: {})", dateTimeStr, e2.getMessage());
+                return null;
+            }
         }
     }
     

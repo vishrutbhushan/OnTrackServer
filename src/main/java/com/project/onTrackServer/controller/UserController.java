@@ -1,7 +1,8 @@
 package com.project.onTrackServer.controller;
 
+import com.project.onTrackServer.dto.ApiResponse;
+import com.project.onTrackServer.dto.UserDTO;
 import com.project.onTrackServer.model.User;
-import com.project.onTrackServer.model.ApiResponse;
 import com.project.onTrackServer.service.UserService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -23,14 +24,14 @@ public class UserController {
     private UserService userService;
     
     @PostMapping
-    public ResponseEntity<User> saveUser(@RequestBody User user) {
-        logger.info("Save user request for: {}", user.getUserId());
-        User savedUser = userService.saveUser(user);
+    public ResponseEntity<UserDTO> saveUser(@RequestBody UserDTO userDTO) {
+        logger.info("Save user request for: {}", userDTO.getUserId());
+        UserDTO savedUser = userService.saveUser(userDTO);
         return ResponseEntity.ok(savedUser);
     }
     
     @GetMapping("/{userId}")
-    public ResponseEntity<User> getUser(@PathVariable String userId) {
+    public ResponseEntity<UserDTO> getUser(@PathVariable String userId) {
         logger.info("Get user request for: {}", userId);
         return userService.getUserByUserId(userId)
             .map(ResponseEntity::ok)
@@ -46,22 +47,32 @@ public class UserController {
     }
     
     @PutMapping("/{userId}/access-token")
-    public ResponseEntity<User> updateAccessToken(
+    public ResponseEntity<UserDTO> updateAccessToken(
             @PathVariable String userId,
             @RequestBody Map<String, String> request) {
         logger.info("Update access token request for: {}", userId);
         String accessToken = request.get("accessToken");
-        User updatedUser = userService.updateAccessToken(userId, accessToken);
+        UserDTO updatedUser = userService.updateAccessToken(userId, accessToken);
         return ResponseEntity.ok(updatedUser);
     }
     
     @PutMapping("/{userId}/fcm-token")
-    public ResponseEntity<User> updateFcmToken(
+    public ResponseEntity<UserDTO> updateFcmToken(
             @PathVariable String userId,
             @RequestBody Map<String, String> request) {
         logger.info("Update FCM token request for: {}", userId);
         String fcmToken = request.get("fcmToken");
-        User updatedUser = userService.updateFcmToken(userId, fcmToken);
+        UserDTO updatedUser = userService.updateFcmToken(userId, fcmToken);
+        return ResponseEntity.ok(updatedUser);
+    }
+    
+    @PutMapping("/{userId}")
+    public ResponseEntity<UserDTO> updateUser(
+            @PathVariable String userId,
+            @RequestBody UserDTO userDTO) {
+        logger.info("Update user request for: {}", userId);
+        userDTO.setUserId(userId);
+        UserDTO updatedUser = userService.saveUser(userDTO);
         return ResponseEntity.ok(updatedUser);
     }
     

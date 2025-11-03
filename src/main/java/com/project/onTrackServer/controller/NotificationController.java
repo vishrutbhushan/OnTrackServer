@@ -1,7 +1,7 @@
 package com.project.onTrackServer.controller;
 
-import com.project.onTrackServer.model.ApiResponse;
 import com.project.onTrackServer.service.UserService;
+import com.project.onTrackServer.dto.ApiResponse;
 import com.project.onTrackServer.service.NotificationService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;

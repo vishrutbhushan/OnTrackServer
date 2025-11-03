@@ -14,9 +14,8 @@ import com.project.onTrackServer.model.Item;
 import com.project.onTrackServer.model.User;
 import com.project.onTrackServer.repository.ItemRepository;
 import com.project.onTrackServer.exception.GmailAuthenticationException;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.security.GeneralSecurityException;
@@ -25,14 +24,14 @@ import java.util.Date;
 import java.util.List;
 
 @Service
+@Slf4j
 public class GmailService {
     
-    private static final Logger logger = LoggerFactory.getLogger(GmailService.class);
     private static final String APPLICATION_NAME = "OnTrack Server";
     private static final JsonFactory JSON_FACTORY = GsonFactory.getDefaultInstance();
     
     public List<Item> fetchEmailsFromGmail(User user) {
-        logger.info("Fetching emails from Gmail for user: {}", user.getUserId());
+        log.info("Fetching emails from Gmail for user: {}", user.getUserId());
         
         try {
             Gmail service = getGmailService(user);
@@ -43,11 +42,11 @@ public class GmailService {
                 
             List<Message> messages = listResponse.getMessages();
             if (messages == null || messages.isEmpty()) {
-                logger.info("No messages found for user: {}", user.getUserId());
+                log.info("No messages found for user: {}", user.getUserId());
                 return new ArrayList<>();
             }
             
-            logger.info("Found {} messages for user: {}", messages.size(), user.getUserId());
+            log.info("Found {} messages for user: {}", messages.size(), user.getUserId());
             
             return messages.stream()
                 .map(message -> getEmailItem(service, message, user.getUserId()))
@@ -55,7 +54,7 @@ public class GmailService {
                 .toList();
                 
         } catch (IOException e) {
-            logger.error("Error fetching emails from Gmail for user {}: {}", user.getUserId(), e.getMessage());
+            log.error("Error fetching emails from Gmail for user {}: {}", user.getUserId(), e.getMessage());
             
             // Check if it's an authentication error
             if (e.getMessage().contains("401") || e.getMessage().contains("Invalid Credentials") || 
@@ -65,53 +64,56 @@ public class GmailService {
             
             throw new RuntimeException("Failed to fetch emails from Gmail: " + e.getMessage());
         } catch (Exception e) {
-            logger.error("Unexpected error for user {}: {}", user.getUserId(), e.getMessage());
+            log.error("Unexpected error for user {}: {}", user.getUserId(), e.getMessage());
             throw new RuntimeException("Failed to fetch emails: " + e.getMessage());
         }
     }
     
     public List<Item> fetchNewEmailsFromGmail(User user, ItemRepository itemRepository) {
-        logger.info("Fetching new emails from Gmail for user: {}", user.getUserId());
+        log.info("Fetching new emails from Gmail for user: {}", user.getUserId());
         
         try {
             Gmail service = getGmailService(user);
             
-            // Fetch recent emails (last 50)
+            String query = "is:unread";
+            
+            // If we have a last processed email, fetch only newer ones
+            if (user.getUserConfig() != null && user.getUserConfig().getLastProcessedEmailId() != null) {
+                query += " after:" + user.getUserConfig().getLastProcessedEmailTime();
+            }
+            
+            // Fetch recent emails
             ListMessagesResponse listResponse = service.users().messages()
                 .list("me")
-                .setMaxResults(50L)
-                .setQ("is:unread") // Only fetch unread emails to get new ones
+                .setMaxResults(10L) // Reduced from 50 to only get new emails since last processed
+                .setQ(query)
                 .execute();
                 
             List<Message> messages = listResponse.getMessages();
             if (messages == null || messages.isEmpty()) {
-                logger.info("No new messages found for user: {}", user.getUserId());
+                log.info("No new messages found for user: {}", user.getUserId());
                 return new ArrayList<>();
             }
             
-            logger.info("Found {} potential new messages for user: {}", messages.size(), user.getUserId());
+            log.info("Found {} new messages for user: {}", messages.size(), user.getUserId());
             
             List<Item> newEmails = new ArrayList<>();
             
             for (Message message : messages) {
                 Item emailItem = getEmailItem(service, message, user.getUserId());
                 if (emailItem != null) {
-                    // Check if this email already exists in the database
-                    List<Item> existingItems = itemRepository.findByUserIdAndSubjectAndSender(
-                        user.getUserId(), emailItem.getSubject(), emailItem.getSender());
-                    
-                    // If no existing email with same subject and sender, consider it new
-                    if (existingItems.isEmpty()) {
+                    // Check if this email already exists in the database by Gmail message ID
+                    if (!itemRepository.existsByGmailMessageId(emailItem.getGmailMessageId())) {
                         newEmails.add(emailItem);
                     }
                 }
             }
             
-            logger.info("Found {} truly new emails for user: {}", newEmails.size(), user.getUserId());
+            log.info("Found {} truly new emails for user: {}", newEmails.size(), user.getUserId());
             return newEmails;
                 
         } catch (IOException e) {
-            logger.error("Error fetching new emails from Gmail for user {}: {}", user.getUserId(), e.getMessage());
+            log.error("Error fetching new emails from Gmail for user {}: {}", user.getUserId(), e.getMessage());
             
             // Check if it's an authentication error
             if (e.getMessage().contains("401") || e.getMessage().contains("Invalid Credentials") || 
@@ -121,7 +123,7 @@ public class GmailService {
             
             throw new RuntimeException("Failed to fetch new emails from Gmail: " + e.getMessage());
         } catch (Exception e) {
-            logger.error("Unexpected error fetching new emails for user {}: {}", user.getUserId(), e.getMessage());
+            log.error("Unexpected error fetching new emails for user {}: {}", user.getUserId(), e.getMessage());
             throw new RuntimeException("Failed to fetch new emails: " + e.getMessage());
         }
     }
@@ -146,10 +148,15 @@ public class GmailService {
                 }
             }
             
-            return new Item(subject, "Email content preview...", from, userId);
+            Item item = new Item();
+            item.setGmailMessageId(message.getId());
+            item.setSubject(subject);
+            item.setSender(from);
+            item.setSnippet(fullMessage.getSnippet() != null ? fullMessage.getSnippet() : "");
+            return item;
             
         } catch (Exception e) {
-            logger.error("Error processing message {}: {}", message.getId(), e.getMessage());
+            log.error("Error processing message {}: {}", message.getId(), e.getMessage());
             return null;
         }
     }
@@ -159,6 +166,27 @@ public class GmailService {
             return fromHeader.substring(fromHeader.indexOf("<") + 1, fromHeader.indexOf(">"));
         }
         return fromHeader;
+    }
+    
+    public void archiveEmail(User user, String messageId) {
+        try {
+            Gmail service = getGmailService(user);
+            
+            // Remove INBOX label to archive the email
+            com.google.api.services.gmail.model.Message message = new com.google.api.services.gmail.model.Message();
+            message.setId(messageId);
+            
+            service.users().messages()
+                .modify("me", messageId, 
+                    new com.google.api.services.gmail.model.ModifyMessageRequest()
+                        .setRemoveLabelIds(List.of("INBOX")))
+                .execute();
+            
+            log.info("Archived email with message ID: {} for user: {}", messageId, user.getUserId());
+            
+        } catch (Exception e) {
+            log.warn("Failed to archive email {}: {}", messageId, e.getMessage());
+        }
     }
     
     private Gmail getGmailService(User user) {
@@ -175,7 +203,7 @@ public class GmailService {
             GoogleCredentials credentials = new GoogleCredentials(accessToken) {
                 @Override
                 public AccessToken refreshAccessToken() throws IOException {
-                    logger.debug("Access token refresh requested for user: {}, using existing token", user.getUserId());
+                    log.debug("Access token refresh requested for user: {}, using existing token", user.getUserId());
                     return getAccessToken();
                 }
             };
@@ -185,7 +213,7 @@ public class GmailService {
                 .build();
                 
         } catch (GeneralSecurityException | IOException e) {
-            logger.error("Error creating Gmail service: {}", e.getMessage());
+            log.error("Error creating Gmail service: {}", e.getMessage());
             throw new RuntimeException("Failed to create Gmail service: " + e.getMessage());
         }
     }

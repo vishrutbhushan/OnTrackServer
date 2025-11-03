@@ -1,16 +1,34 @@
 package com.project.onTrackServer.model;
 
 import jakarta.persistence.*;
-import java.time.LocalDateTime;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+import lombok.AllArgsConstructor;
+import lombok.EqualsAndHashCode;
+import com.fasterxml.jackson.annotation.JsonIgnore;
+import java.util.List;
 
+@Data
+@EqualsAndHashCode(callSuper = true)
+@NoArgsConstructor
+@AllArgsConstructor
 @Entity
 @Table(name = "users")
-public class User {
+public class User extends AuditBase {
     
+    /**
+     * Internal database ID - NEVER used in API communication.
+     * Used only for database relationships.
+     */
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
     
+    /**
+     * PRIMARY IDENTIFIER: The email address.
+     * This is the ONLY identifier used in API communication.
+     * Rule: userId ALWAYS = email address
+     */
     @Column(name = "user_id", unique = true, nullable = false)
     private String userId;
     
@@ -26,97 +44,21 @@ public class User {
     @Column(name = "fcm_token", length = 1000)
     private String fcmToken;
     
-    @Column(name = "created_at", nullable = false, updatable = false)
-    private LocalDateTime createdAt;
+    @OneToOne(mappedBy = "user", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
+    @JsonIgnore
+    private UserConfig userConfig;
     
-    @Column(name = "updated_at", nullable = false)
-    private LocalDateTime updatedAt;
+    @OneToMany(mappedBy = "user", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
+    @JsonIgnore
+    private List<Platform> platforms;
     
-    public User() {
-        this.createdAt = LocalDateTime.now();
-        this.updatedAt = LocalDateTime.now();
-    }
+    @OneToMany(mappedBy = "user", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
+    @JsonIgnore
+    private List<Category> categories;
     
-    public User(String userId, String email, String displayName) {
-        this();
-        this.userId = userId;
-        this.email = email;
-        this.displayName = displayName;
-    }
-    
-    public User(String userId, String email, String displayName, String accessToken, String fcmToken) {
-        this();
-        this.userId = userId;
-        this.email = email;
-        this.displayName = displayName;
-        this.accessToken = accessToken;
-        this.fcmToken = fcmToken;
-    }
-    
-    // Getters and Setters
-    public Long getId() {
-        return id;
-    }
-    
-    public void setId(Long id) {
-        this.id = id;
-    }
-    
-    public String getUserId() {
-        return userId;
-    }
-    
-    public void setUserId(String userId) {
-        this.userId = userId;
-    }
-    
-    public String getEmail() {
-        return email;
-    }
-    
-    public void setEmail(String email) {
-        this.email = email;
-    }
-    
-    public String getDisplayName() {
-        return displayName;
-    }
-    
-    public void setDisplayName(String displayName) {
-        this.displayName = displayName;
-    }
-    
-    public String getAccessToken() {
-        return accessToken;
-    }
-    
-    public void setAccessToken(String accessToken) {
-        this.accessToken = accessToken;
-        this.updatedAt = LocalDateTime.now();
-    }
-    
-    public String getFcmToken() {
-        return fcmToken;
-    }
-    
-    public void setFcmToken(String fcmToken) {
-        this.fcmToken = fcmToken;
-        this.updatedAt = LocalDateTime.now();
-    }
-    
-    public LocalDateTime getCreatedAt() {
-        return createdAt;
-    }
-    
-    public void setCreatedAt(LocalDateTime createdAt) {
-        this.createdAt = createdAt;
-    }
-    
-    public LocalDateTime getUpdatedAt() {
-        return updatedAt;
-    }
-    
-    public void setUpdatedAt(LocalDateTime updatedAt) {
-        this.updatedAt = updatedAt;
-    }
+    @OneToMany(mappedBy = "user", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
+    @JsonIgnore
+    private List<Order> orders;
+
 }
+

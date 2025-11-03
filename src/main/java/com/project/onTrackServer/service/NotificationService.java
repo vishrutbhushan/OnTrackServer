@@ -20,6 +20,9 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.util.Optional;
 
+import lombok.extern.slf4j.Slf4j;
+
+@Slf4j
 @Service
 public class NotificationService {
 
@@ -60,15 +63,31 @@ public class NotificationService {
 
     public void sendNotification(String userId, String title, String messageBody) {
         try {
-            // Get FCM token for the user
+            // Get user details
             Optional<User> userOpt = userRepository.findByUserId(userId);
             
-            if (userOpt.isEmpty() || userOpt.get().getFcmToken() == null) {
+            if (userOpt.isEmpty()) {
+                logger.warn("User not found: {}", userId);
+                throw new RuntimeException("User not found: " + userId);
+            }
+            
+            User user = userOpt.get();
+            
+            // Check if notifications are enabled for this user
+            if (user.getUserConfig() != null) {
+                Boolean notificationsEnabled = user.getUserConfig().getNotificationEnabled();
+                if (notificationsEnabled != null && !notificationsEnabled) {
+                    logger.info("Notifications are disabled for user: {}", userId);
+                    return;
+                }
+            }
+            
+            if (user.getFcmToken() == null) {
                 logger.warn("No FCM token found for user: {}", userId);
                 throw new RuntimeException("No FCM token found for user: " + userId);
             }
             
-            String fcmToken = userOpt.get().getFcmToken();
+            String fcmToken = user.getFcmToken();
             logger.info("Sending notification to user {}, FCM token: {}...", userId, fcmToken.substring(0, Math.min(fcmToken.length(), 20)));
             
             // Build the notification
