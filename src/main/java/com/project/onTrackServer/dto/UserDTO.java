@@ -27,7 +27,7 @@ public class UserDTO {
         this.fcmToken = user.getFcmToken();
         
         // Set defaults
-        this.pollingFrequency = 10;
+        this.pollingFrequency = 2;
         this.notificationEnabled = true;
         this.autoArchiveOrderEmails = true;
         

@@ -23,7 +23,6 @@ import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
 import java.util.Optional;
-import java.util.Map;
 import java.math.BigDecimal;
 
 @Service
@@ -102,7 +101,7 @@ public class EmailProcessingSchedulerService {
             if (!newEmails.isEmpty()) {
                 for (Item email : newEmails) {
                     // Filter email by platform if user has defined platforms
-                    if (!userPlatforms.isEmpty() && !isPlatformAllowed(email.getSender(), userPlatforms)) {
+                    if (!isPlatformAllowed(email.getSender(), userPlatforms)) {
                         logger.info("Email from {} skipped - not in user's allowed platforms", email.getSender());
                         continue;
                     }
@@ -131,33 +130,39 @@ public class EmailProcessingSchedulerService {
         
         String senderLower = senderEmail.toLowerCase();
         
-        // Map of common platform email domains
-        Map<String, List<String>> platformEmailDomains = new java.util.HashMap<>();
-        platformEmailDomains.put("Amazon", List.of("@amazon.com", "@amazon.in", "@amazonses.com"));
-        platformEmailDomains.put("Flipkart", List.of("@flipkart.com", "@fkart.com"));
-        platformEmailDomains.put("eBay", List.of("@ebay.com"));
-        platformEmailDomains.put("Walmart", List.of("@walmart.com"));
-        platformEmailDomains.put("Target", List.of("@target.com"));
-        platformEmailDomains.put("Best Buy", List.of("@bestbuy.com"));
-        platformEmailDomains.put("Shopify", List.of("@shopify.com"));
-        platformEmailDomains.put("Etsy", List.of("@etsy.com"));
-        platformEmailDomains.put("AliExpress", List.of("@aliexpress.com"));
-        
+        // Check if sender email contains any of the user's configured platform names
         for (Platform platform : userPlatforms) {
             String platformName = platform.getPlatformName();
-            List<String> domains = platformEmailDomains.getOrDefault(platformName, List.of());
-            
-            for (String domain : domains) {
-                if (senderLower.contains(domain)) {
-                    logger.debug("Email from {} matches platform {}", senderEmail, platformName);
-                    return true;
-                }
+            if (platformName != null && senderLower.contains(platformName.toLowerCase())) {
+                logger.debug("Email from {} matches platform {}", senderEmail, platformName);
+                return true;
             }
         }
         
         logger.info("Email from {} SKIPPED - does not match any user's configured platforms (user has {} platforms)", 
             senderEmail, userPlatforms.size());
         return false;
+    }
+    
+    private Platform findMatchingPlatform(String senderEmail, List<Platform> userPlatforms) {
+        if (senderEmail == null || senderEmail.isEmpty() || userPlatforms.isEmpty()) {
+            logger.debug("Cannot find matching platform - sender email or platforms list is empty");
+            return null;
+        }
+        
+        String senderLower = senderEmail.toLowerCase();
+        
+        // Find platform where sender email contains the platform name
+        for (Platform platform : userPlatforms) {
+            String platformName = platform.getPlatformName();
+            if (platformName != null && senderLower.contains(platformName.toLowerCase())) {
+                logger.debug("Found matching platform: {} for sender: {}", platformName, senderEmail);
+                return platform;
+            }
+        }
+        
+        logger.debug("No matching platform found for sender: {}", senderEmail);
+        return null;
     }
     
     private void updateLastProcessedEmail(User user, String messageId) {
@@ -195,12 +200,15 @@ public class EmailProcessingSchedulerService {
             if (analysis.isOrderRelatedEmail()) {
                 logger.info("Email identified as order-related");
                 
-                // Extract platform name from sender email
-                String platformName = extractPlatformName(email.getSender());
-                logger.debug("Extracted platform name: {}", platformName);
+                // Get user's platforms
+                List<Platform> userPlatforms = platformRepository.findByUserAndIsDeletedFalse(user);
+                
+                // Find matching platform from sender email
+                Platform matchingPlatform = findMatchingPlatform(email.getSender(), userPlatforms);
+                logger.debug("Matching platform: {}", matchingPlatform != null ? matchingPlatform.getPlatformName() : "None");
                 
                 // Create or update order (do NOT save to Item table)
-                handleOrderCreationOrUpdate(user, analysis, platformName);
+                handleOrderCreationOrUpdate(user, analysis, matchingPlatform);
                 
                 // Archive email if auto-archive is enabled in user config
                 if (user.getUserConfig() != null && 
@@ -235,7 +243,7 @@ public class EmailProcessingSchedulerService {
         }
     }
     
-    private void handleOrderCreationOrUpdate(User user, GeminiEmailAnalysisService.EmailAnalysisResult analysis, String platformName) {
+    private void handleOrderCreationOrUpdate(User user, GeminiEmailAnalysisService.EmailAnalysisResult analysis, Platform platform) {
         try {
             if (analysis.getOrderId() == null) {
                 logger.warn("Order ID is null in analysis result, skipping order creation for user: {}", user.getUserId());
@@ -253,7 +261,7 @@ public class EmailProcessingSchedulerService {
                 
                 // Update existing order
                 Order order = existingOrder.get();
-                updateOrder(order, analysis, user);
+                updateOrder(order, analysis, user, platform);
                 Order savedOrder = orderRepository.save(order);
                 
                 logger.info("Successfully updated order: {} for user: {}", savedOrder.getId(), user.getUserId());
@@ -269,7 +277,7 @@ public class EmailProcessingSchedulerService {
                 logger.info("Creating new order: {} for user: {}", analysis.getOrderId(), user.getUserId());
                 
                 // Create new order
-                Order newOrder = createNewOrder(user, analysis, platformName);
+                Order newOrder = createNewOrder(user, analysis, platform);
                 Order savedOrder = orderRepository.save(newOrder);
                 
                 logger.info("Successfully created new order with ID: {} for user: {}", savedOrder.getId(), user.getUserId());
@@ -285,7 +293,7 @@ public class EmailProcessingSchedulerService {
                 logger.info("Order not found but has valid order ID, creating new order: {} for user: {}", analysis.getOrderId(), user.getUserId());
                 
                 // Create new order from email data
-                Order newOrder = createNewOrder(user, analysis, platformName);
+                Order newOrder = createNewOrder(user, analysis, platform);
                 Order savedOrder = orderRepository.save(newOrder);
                 
                 logger.info("Successfully created order from email data: {} for user: {}", savedOrder.getId(), user.getUserId());
@@ -304,7 +312,7 @@ public class EmailProcessingSchedulerService {
         }
     }
     
-    private Order createNewOrder(User user, GeminiEmailAnalysisService.EmailAnalysisResult analysis, String platformName) {
+    private Order createNewOrder(User user, GeminiEmailAnalysisService.EmailAnalysisResult analysis, Platform platform) {
         logger.debug("Creating new order with ID: {} for user: {}", analysis.getOrderId(), user.getUserId());
         
         Order order = new Order();
@@ -312,6 +320,7 @@ public class EmailProcessingSchedulerService {
         order.setOrderId(analysis.getOrderId());
         order.setProductLink(analysis.getProductLink());
         order.setQuantity(analysis.getQuantity() != null ? analysis.getQuantity() : 1);
+        order.setPlatform(platform);
         
         if (analysis.getPrice() != null) {
             order.setPrice(BigDecimal.valueOf(analysis.getPrice()));
@@ -332,14 +341,15 @@ public class EmailProcessingSchedulerService {
         order.setCreateUser(user.getUserId());
         order.setUpdateUser(user.getUserId());
         
-        logger.info("New Order prepared: orderId={}, price={}, quantity={}, status={}, orderDate={}, deliveryDate={}, productLink={}", 
+        logger.info("New Order prepared: orderId={}, price={}, quantity={}, status={}, orderDate={}, deliveryDate={}, productLink={}, platform={}", 
             order.getOrderId(), order.getPrice(), order.getQuantity(), order.getShipmentStatus(), 
-            order.getOrderDate(), order.getDeliveryDate(), order.getProductLink());
+            order.getOrderDate(), order.getDeliveryDate(), order.getProductLink(), 
+            platform != null ? platform.getPlatformName() : "None");
         
         return order;
     }
     
-    private void updateOrder(Order order, GeminiEmailAnalysisService.EmailAnalysisResult analysis, User user) {
+    private void updateOrder(Order order, GeminiEmailAnalysisService.EmailAnalysisResult analysis, User user, Platform platform) {
         logger.debug("Updating order: {} for user: {}", order.getOrderId(), user.getUserId());
         
         StringBuilder updateLog = new StringBuilder("Order update fields: ");
@@ -370,30 +380,14 @@ public class EmailProcessingSchedulerService {
             updateLog.append("status=").append(oldStatus).append("->").append(analysis.getShipmentStatus()).append(" ");
         }
         
+        if (platform != null && order.getPlatform() == null) {
+            order.setPlatform(platform);
+            updateLog.append("platform=").append(platform.getPlatformName()).append(" ");
+        }
+        
         order.setUpdateUser(user.getUserId());
         
         logger.info("{}", updateLog.toString());
-    }
-    
-    private String extractPlatformName(String senderEmail) {
-        if (senderEmail == null || senderEmail.isEmpty()) {
-            return null;
-        }
-        
-        senderEmail = senderEmail.toLowerCase();
-        
-        // Simple contains matching for platform names
-        if (senderEmail.contains("amazon")) return "Amazon";
-        if (senderEmail.contains("flipkart")) return "Flipkart";
-        if (senderEmail.contains("ebay")) return "eBay";
-        if (senderEmail.contains("walmart")) return "Walmart";
-        if (senderEmail.contains("target")) return "Target";
-        if (senderEmail.contains("bestbuy")) return "Best Buy";
-        if (senderEmail.contains("shopify")) return "Shopify";
-        if (senderEmail.contains("etsy")) return "Etsy";
-        if (senderEmail.contains("aliexpress")) return "AliExpress";
-        
-        return null;
     }
     
     private LocalDateTime parseDateTime(String dateTimeStr) {
