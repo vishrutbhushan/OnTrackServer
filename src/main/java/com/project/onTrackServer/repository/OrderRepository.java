@@ -50,13 +50,14 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
     
     /**
      * Get monthly spending data for line chart (last 12 months)
+     * Using DATE_FORMAT for MySQL compatibility (groups by year-month)
      */
-    @Query("SELECT DATE_TRUNC('month', o.orderDate) as month, " +
+    @Query("SELECT DATE_FORMAT(o.orderDate, '%Y-%m') as month, " +
            "COALESCE(SUM(o.price), 0) as totalAmount, " +
            "COUNT(o) as orderCount " +
            "FROM Order o WHERE o.user = :user AND o.isDeleted = false " +
            "AND o.orderDate >= :startDate " +
-           "GROUP BY DATE_TRUNC('month', o.orderDate) " +
+           "GROUP BY DATE_FORMAT(o.orderDate, '%Y-%m') " +
            "ORDER BY month ASC")
     List<Object[]> getMonthlySpendData(@Param("user") User user, @Param("startDate") LocalDateTime startDate);
     

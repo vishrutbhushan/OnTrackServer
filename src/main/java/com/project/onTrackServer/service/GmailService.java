@@ -16,6 +16,7 @@ import org.springframework.stereotype.Service;
 
 import java.io.IOException;
 import java.security.GeneralSecurityException;
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
@@ -49,7 +50,7 @@ public class GmailService {
     /**
      * Fetch emails from Gmail for processing without persisting to database.
      * Used by EmailProcessingSchedulerService for email analysis and order creation.
-     * Only returns emails that have not been processed before (tracks by message ID).
+     * Only returns emails that have not been processed before (tracks by timestamp).
      * 
      * @param user The user to fetch emails for
      * @return List of EmailData objects with email content
@@ -59,69 +60,47 @@ public class GmailService {
         
         try {
             Gmail service = getGmailService(user);
-            int maxResults = 10; // Fetch more to find new ones
             
-            // If we have a last processed email ID, only fetch newer emails
-            String lastProcessedId = null;
-            if (user.getUserConfig() != null && user.getUserConfig().getLastProcessedEmailId() != null) {
-                lastProcessedId = user.getUserConfig().getLastProcessedEmailId();
-                log.info("Fetching NEW emails after message ID: {} (subsequent run)", lastProcessedId);
+            // Build query to only fetch NEW emails since last processing
+            StringBuilder query = new StringBuilder();
+            int maxResults = 10; // Default for first run
+            
+            if (user.getUserConfig() != null && user.getUserConfig().getLastProcessedEmailTime() != null) {
+                LocalDateTime lastProcessedTime = user.getUserConfig().getLastProcessedEmailTime();
+                // Gmail query: after:timestamp (timestamp in seconds since epoch)
+                long afterSeconds = lastProcessedTime.atZone(java.time.ZoneId.systemDefault()).toInstant().getEpochSecond() + 1;
+                query.append("after:").append(afterSeconds);
+                maxResults = 50; // On subsequent runs, we can fetch more since server-side filter narrows results
+                log.info("Fetching NEW emails after timestamp: {} (subsequent run)", lastProcessedTime);
             } else {
-                log.info("First run - fetching last {} emails", maxResults);
+                log.info("First run - fetching last 10 emails");
             }
             
             ListMessagesResponse listResponse = service.users().messages()
                 .list("me")
                 .setMaxResults((long) maxResults)
+                .setQ(query.length() > 0 ? query.toString() : null)
                 .execute();
             
             List<Message> messages = listResponse.getMessages();
             if (messages == null || messages.isEmpty()) {
-                log.info("No messages found for user: {}", user.getUserId());
+                log.info("No new messages found for user: {}", user.getUserId());
                 return new ArrayList<>();
             }
             
-            log.info("Found {} messages for user: {} - filtering for unprocessed ones", messages.size(), user.getUserId());
+            log.info("Found {} NEW messages for user: {} via server-side filtering", messages.size(), user.getUserId());
             
-            // Gmail returns emails in newest-first order (reverse chronological)
-            // We need to collect all emails BEFORE the lastProcessedId (newer than it)
+            // Process all messages returned (they're already filtered server-side)
             List<EmailData> emailDataList = new ArrayList<>();
-            
-            if (lastProcessedId == null) {
-                // First run - process all fetched emails
-                for (Message message : messages) {
-                    EmailData emailData = extractEmailData(service, message);
-                    if (emailData != null) {
-                        emailDataList.add(emailData);
-                        log.debug("Added email for processing (first run): {} from {}", emailData.messageId, emailData.sender);
-                    }
-                }
-            } else {
-                // Subsequent runs - only add emails that come BEFORE lastProcessedId in the list
-                // (which means they are NEWER, since Gmail returns newest first)
-                for (Message message : messages) {
-                    if (message.getId().equals(lastProcessedId)) {
-                        // We've reached the last processed email, stop here
-                        log.debug("Reached last processed message ID: {}, stopping collection", lastProcessedId);
-                        break;
-                    }
-                    
-                    EmailData emailData = extractEmailData(service, message);
-                    if (emailData != null) {
-                        emailDataList.add(emailData);
-                        log.debug("Added NEW email for processing: {} from {}", emailData.messageId, emailData.sender);
-                    }
-                }
-                
-                // If we never found lastProcessedId, it means it's older than our fetch
-                // In this case, all fetched emails are newer, so they're all new
-                if (emailDataList.size() == messages.size()) {
-                    log.warn("Last processed email ID {} not found in fetched messages (likely archived/deleted), treating all {} fetched messages as new", 
-                        lastProcessedId, messages.size());
+            for (Message message : messages) {
+                EmailData emailData = extractEmailData(service, message);
+                if (emailData != null) {
+                    emailDataList.add(emailData);
+                    log.debug("Added email for processing: {} from {}", emailData.messageId, emailData.sender);
                 }
             }
             
-            log.info("Returning {} unprocessed emails for user: {}", emailDataList.size(), user.getUserId());
+            log.info("Returning {} emails for user: {}", emailDataList.size(), user.getUserId());
             return emailDataList;
             
         } catch (IOException e) {

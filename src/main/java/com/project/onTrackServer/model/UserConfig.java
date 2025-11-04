@@ -32,11 +32,8 @@ public class UserConfig extends AuditBase {
     @Column(name = "notification_enabled", nullable = false)
     private Boolean notificationEnabled = true;
     
-    @Column(name = "last_processed_email_id")
-    private String lastProcessedEmailId; // Gmail message ID of the last processed email
-    
     @Column(name = "last_processed_email_time")
-    private LocalDateTime lastProcessedEmailTime; // Timestamp of the last processed email
+    private LocalDateTime lastProcessedEmailTime; // Timestamp of the last processed email (used for Gmail server-side filtering)
     
     @Column(name = "auto_archive_order_emails", nullable = false)
     private Boolean autoArchiveOrderEmails = true; // Whether to archive emails recognized as order-related

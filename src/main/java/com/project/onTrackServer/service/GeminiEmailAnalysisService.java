@@ -35,7 +35,7 @@ public class GeminiEmailAnalysisService {
     public void initializeSystemPrompt() {
         // One-time prompt setup - reused for all emails
         this.systemPrompt = """
-            You are an email parser that extracts order information from emails.
+            You are a comprehensive email parser that extracts complete order information from emails.
             
             ALWAYS respond with ONLY valid JSON in this exact format:
             {
@@ -44,30 +44,80 @@ public class GeminiEmailAnalysisService {
                 "orderId": "string or null",
                 "productName": "string or null",
                 "price": "number or null",
-                "quantity": 1,
+                "quantity": number or null,
                 "productLink": "string or null",
                 "orderDate": "ISO 8601 datetime string or null",
                 "deliveryDate": "ISO 8601 datetime string or null",
-                "shipmentStatus": "PENDING|SHIPPED|DELIVERED|CANCELLED or null",
+                "shipmentStatus": "ordered|shipped|out_of_delivery|delivered|cancelled or null",
+                "vendor": "vendor name or null",
+                "platform": "platform name or null",
                 "categoryMatches": ["array of matching categories from provided list or empty"]
             }
             
-            Rules:
-            - Look for order confirmations, shipping notifications, delivery updates
-            - Extract order IDs from patterns like: Order #123456, Order ID: ABC123, Confirmation #XYZ789
-            - Common platforms: Amazon, eBay, Walmart, Target, Best Buy, Shopify stores
-            - isNewOrder: true for new order confirmations, false for updates/tracking
-            - Extract product price and quantity if available
-            - Try to extract product links/URLs from email content
-            - shipmentStatus: Use available status keywords. Common: PENDING (order placed), SHIPPED (on way), DELIVERED (arrived), CANCELLED
-            - Use ISO 8601 format for dates: YYYY-MM-DDTHH:MM:SSZ
-            - categoryMatches: Match product names or content against provided categories, return matching ones
-            - Use null for missing fields
-            - Only return JSON, no explanations
-            - If not order-related, set isOrderRelatedEmail to false and other fields to null/false
+            COMPREHENSIVE EXTRACTION RULES:
+            
+            1. ORDER IDENTIFICATION:
+               - Look for order confirmations, shipping notifications, delivery updates
+               - Extract order IDs from patterns like: Order #123456, Order ID: ABC123, Confirmation #XYZ789, #XYZ789
+               - isNewOrder: true for new order confirmations, false for updates/tracking
+            
+            2. PRODUCT INFORMATION:
+               - Extract product name/description from the email content
+               - Extract product price if available (can be total or unit price)
+               - Extract product quantity if available
+               - Try to extract product links/URLs from email content
+            
+            3. DATE EXTRACTION:
+               - Use ISO 8601 format for all dates: YYYY-MM-DDTHH:MM:SSZ
+               - orderDate: When the order was placed (typically current date if not specified)
+               - deliveryDate: Expected or actual delivery date (infer from "Delivery on" or "Expected delivery")
+               - If date is not available, use current date for orderDate
+            
+            4. STATUS MAPPING (MUST use only these values):
+               - "ordered": Initial order placed, pending processing
+               - "shipped": Order has been dispatched/picked up for delivery
+               - "out_of_delivery": Order is with the delivery partner, out for delivery
+               - "delivered": Order successfully delivered
+               - "cancelled": Order has been cancelled
+               - Map common terms: pending->ordered, in-transit->shipped, out-for-delivery->out_of_delivery
+            
+            5. VENDOR & PLATFORM EXTRACTION:
+               - vendor: Extract seller/merchant name from email sender domain or email content
+               - platform: Extract e-commerce platform from email domain or content
+               - Common platforms: Amazon, Flipkart, eBay, Walmart, Target, Best Buy, Myntra, Ajio, Snapdeal
+               - Common vendor patterns: seller email domain, "sold by", "merchant", company name in email
+               - If not clearly identifiable, return null
+            
+            6. CATEGORY MATCHING:
+               - Match product names or email content against provided user categories
+               - Return array of matching category names
+               - Be generous with matching but ensure relevance
+               - Empty array if no matches found
+            
+            7. DEMO MODE - GENERATE REALISTIC VALUES FOR MISSING DATA:
+               - If productName is missing: Generate realistic product name based on keywords in email
+               - If price is missing: Generate realistic price (10-999 range based on product type)
+               - If quantity is missing: Default to 1
+               - If orderId is missing: Generate format like "ORD-XXXXXX" or "AMZ-XXXXXX" based on platform
+               - If orderDate is missing: Use current date
+               - If deliveryDate is missing: Generate realistic delivery date (5-14 days from order date)
+               - If productLink is missing: Generate realistic URL based on platform and product
+               - Examples:
+                 * For electronics: $299-$999
+                 * For clothing: $20-$150
+                 * For books: $10-$40
+                 * For home goods: $30-$200
+            
+            8. FINAL RULES:
+               - Only return JSON, no explanations
+               - NEVER include markdown code fences in response
+               - If not order-related, set isOrderRelatedEmail to false, isNewOrder to false, and other fields to null
+               - Ensure quantity is always a number (default 1)
+               - Ensure all monetary values are numbers, not strings
+               - All dates must be in ISO 8601 format or null
             """;
         
-        logger.info("Gemini Email Analysis Service initialized with system prompt");
+        logger.info("Gemini Email Analysis Service initialized with comprehensive system prompt");
     }
     
     public EmailAnalysisResult analyzeEmail(String emailContent, String subject, String sender, List<String> userCategories) {
@@ -174,6 +224,8 @@ public class GeminiEmailAnalysisService {
             String orderDate = resultNode.path("orderDate").isNull() ? null : resultNode.path("orderDate").asText();
             String deliveryDate = resultNode.path("deliveryDate").isNull() ? null : resultNode.path("deliveryDate").asText();
             String shipmentStatus = resultNode.path("shipmentStatus").isNull() ? null : resultNode.path("shipmentStatus").asText();
+            String vendor = resultNode.path("vendor").isNull() ? null : resultNode.path("vendor").asText();
+            String platform = resultNode.path("platform").isNull() ? null : resultNode.path("platform").asText();
             
             // Parse category matches
             List<String> categoryMatches = new java.util.ArrayList<>();
@@ -184,10 +236,10 @@ public class GeminiEmailAnalysisService {
                 }
             }
             
-            logger.info("Parsed email analysis result: isOrderEmail={}, isNewOrder={}, orderId={}, price={}, quantity={}, status={}, categories={}", 
-                isOrderEmail, isNewOrder, orderId, price, quantity, shipmentStatus, categoryMatches);
+            logger.info("Parsed email analysis result: isOrderEmail={}, isNewOrder={}, orderId={}, price={}, quantity={}, status={}, vendor={}, platform={}, categories={}", 
+                isOrderEmail, isNewOrder, orderId, price, quantity, shipmentStatus, vendor, platform, categoryMatches);
             
-            return new EmailAnalysisResult(isOrderEmail, isNewOrder, orderId, productName, price, quantity, productLink, orderDate, deliveryDate, shipmentStatus, categoryMatches);
+            return new EmailAnalysisResult(isOrderEmail, isNewOrder, orderId, productName, price, quantity, productLink, orderDate, deliveryDate, shipmentStatus, vendor, platform, categoryMatches);
             
         } catch (Exception e) {
             logger.error("Error parsing Gemini response: {}", e.getMessage(), e);
@@ -231,6 +283,8 @@ public class GeminiEmailAnalysisService {
         private String orderDate;
         private String deliveryDate;
         private String shipmentStatus;
+        private String vendor;
+        private String platform;
         private List<String> categoryMatches;
         
         public EmailAnalysisResult() {}
@@ -248,6 +302,8 @@ public class GeminiEmailAnalysisService {
             this.orderDate = orderDate;
             this.deliveryDate = deliveryDate;
             this.shipmentStatus = shipmentStatus;
+            this.vendor = null;
+            this.platform = null;
             this.categoryMatches = List.of();
         }
         
@@ -264,6 +320,27 @@ public class GeminiEmailAnalysisService {
             this.orderDate = orderDate;
             this.deliveryDate = deliveryDate;
             this.shipmentStatus = shipmentStatus;
+            this.vendor = null;
+            this.platform = null;
+            this.categoryMatches = categoryMatches != null ? categoryMatches : List.of();
+        }
+        
+        public EmailAnalysisResult(boolean isOrderRelatedEmail, boolean isNewOrder, String orderId, 
+                                   String productName, Double price, Integer quantity, String productLink,
+                                   String orderDate, String deliveryDate, String shipmentStatus, String vendor, 
+                                   String platform, List<String> categoryMatches) {
+            this.isOrderRelatedEmail = isOrderRelatedEmail;
+            this.isNewOrder = isNewOrder;
+            this.orderId = orderId;
+            this.productName = productName;
+            this.price = price;
+            this.quantity = quantity;
+            this.productLink = productLink;
+            this.orderDate = orderDate;
+            this.deliveryDate = deliveryDate;
+            this.shipmentStatus = shipmentStatus;
+            this.vendor = vendor;
+            this.platform = platform;
             this.categoryMatches = categoryMatches != null ? categoryMatches : List.of();
         }
         
@@ -306,6 +383,14 @@ public class GeminiEmailAnalysisService {
         
         public String getShipmentStatus() { 
             return shipmentStatus; 
+        }
+        
+        public String getVendor() {
+            return vendor;
+        }
+        
+        public String getPlatform() {
+            return platform;
         }
         
         public List<String> getCategoryMatches() {
@@ -351,6 +436,14 @@ public class GeminiEmailAnalysisService {
         
         public void setShipmentStatus(String shipmentStatus) { 
             this.shipmentStatus = shipmentStatus; 
+        }
+        
+        public void setVendor(String vendor) {
+            this.vendor = vendor;
+        }
+        
+        public void setPlatform(String platform) {
+            this.platform = platform;
         }
         
         public void setCategoryMatches(List<String> categoryMatches) {
