@@ -59,7 +59,7 @@ public class GmailService {
         
         try {
             Gmail service = getGmailService(user);
-            int maxResults = 2; // Fetch more to find new ones
+            int maxResults = 10; // Fetch more to find new ones
             
             // If we have a last processed email ID, only fetch newer emails
             String lastProcessedId = null;

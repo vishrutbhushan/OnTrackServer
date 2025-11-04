@@ -356,7 +356,13 @@ public class EmailProcessingSchedulerService {
         order.setOrderId(analysis.getOrderId());
         order.setProductLink(analysis.getProductLink());
         order.setQuantity(analysis.getQuantity() != null ? analysis.getQuantity() : 1);
-        order.setPlatform(platform);
+        
+        // If platform is provided, refresh it in the current transaction to avoid detached entity error
+        if (platform != null && platform.getId() != null) {
+            Platform refreshedPlatform = platformRepository.findById(platform.getId()).orElse(null);
+            order.setPlatform(refreshedPlatform);
+            logger.debug("Refreshed platform entity for order: {}", platform.getPlatformName());
+        }
         
         if (analysis.getPrice() != null) {
             order.setPrice(BigDecimal.valueOf(analysis.getPrice()));
@@ -417,7 +423,9 @@ public class EmailProcessingSchedulerService {
         }
         
         if (platform != null && order.getPlatform() == null) {
-            order.setPlatform(platform);
+            // Refresh platform in current transaction to avoid detached entity error
+            Platform refreshedPlatform = platformRepository.findById(platform.getId()).orElse(null);
+            order.setPlatform(refreshedPlatform);
             updateLog.append("platform=").append(platform.getPlatformName()).append(" ");
         }
         
