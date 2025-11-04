@@ -136,7 +136,12 @@ public class EmailProcessingSchedulerService {
             if (!emails.isEmpty()) {
                 logger.info("Processing {} emails for user: {}", emails.size(), user.getUserId());
                 
+                String lastProcessedEmailId = null;
+                
                 for (GmailService.EmailData emailData : emails) {
+                    // Track the last email ID regardless of whether it matches platforms
+                    lastProcessedEmailId = emailData.messageId;
+                    
                     // Filter email by platform if user has defined platforms
                     if (!isPlatformAllowed(emailData.sender, userPlatforms)) {
                         logger.info("Email from {} skipped - not in user's allowed platforms", emailData.sender);
@@ -145,6 +150,13 @@ public class EmailProcessingSchedulerService {
                     
                     // Process email directly without storing to Item table
                     processEmailDirectly(emailData, user, userPlatforms, categoryNames);
+                }
+                
+                // Update lastProcessedEmailId after processing all emails
+                // This ensures we don't reprocess the same emails even if they don't match platforms
+                if (lastProcessedEmailId != null) {
+                    updateLastProcessedEmail(user, lastProcessedEmailId);
+                    logger.info("Updated last processed email ID for user: {} to: {}", user.getUserId(), lastProcessedEmailId);
                 }
                 
             } else {
@@ -199,11 +211,6 @@ public class EmailProcessingSchedulerService {
                     }
                 } else {
                     logger.debug("Auto-archive is disabled for user: {}", user.getUserId());
-                }
-                
-                // Update the user config with the last processed email info
-                if (emailData.messageId != null) {
-                    updateLastProcessedEmail(user, emailData.messageId);
                 }
                 
             } else {
