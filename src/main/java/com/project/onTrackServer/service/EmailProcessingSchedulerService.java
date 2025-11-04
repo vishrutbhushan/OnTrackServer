@@ -1,11 +1,9 @@
 package com.project.onTrackServer.service;
 
-import com.project.onTrackServer.model.Item;
 import com.project.onTrackServer.model.User;
 import com.project.onTrackServer.model.Order;
 import com.project.onTrackServer.model.Platform;
 import com.project.onTrackServer.model.Category;
-import com.project.onTrackServer.repository.ItemRepository;
 import com.project.onTrackServer.repository.UserRepository;
 import com.project.onTrackServer.repository.OrderRepository;
 import com.project.onTrackServer.repository.UserConfigRepository;
@@ -33,10 +31,7 @@ public class EmailProcessingSchedulerService {
     
     @Autowired
     private UserRepository userRepository;
-    
-    @Autowired
-    private ItemRepository itemRepository;
-    
+
     @Autowired
     private UserConfigRepository userConfigRepository;
     
@@ -96,21 +91,60 @@ public class EmailProcessingSchedulerService {
                 .toList();
             logger.debug("User has {} categories: {}", userCategories.size(), categoryNames);
             
-            List<Item> newEmails = gmailService.fetchNewEmailsFromGmail(user, itemRepository);
+            // Process emails directly without storing to Item table
+            processUserEmails(user, userPlatforms, categoryNames);
             
-            if (!newEmails.isEmpty()) {
-                for (Item email : newEmails) {
+        } catch (Exception e) {
+            logger.error("Error processing emails for user {}: {}", user.getUserId(), e.getMessage());
+        }
+    }
+    
+    private void processUserEmails(User user, List<Platform> userPlatforms, List<String> categoryNames) {
+        try {
+            // Create a temporary email model just for analysis (not persisted to Item table)
+            // Get the Gmail service and fetch raw messages
+            logger.debug("Fetching Gmail messages for user: {}", user.getUserId());
+            
+            // Get Gmail service and fetch messages
+            String accessToken = user.getAccessToken();
+            if (accessToken == null || "gmail_access_granted".equals(accessToken)) {
+                logger.warn("No valid Gmail access token for user: {}", user.getUserId());
+                return;
+            }
+            
+            // Fetch messages from Gmail and process them directly
+            try {
+                // We'll create a simple in-memory email object for analysis
+                // This bypasses the Item table entirely
+                processGmailMessagesDirectly(user, userPlatforms, categoryNames);
+            } catch (Exception e) {
+                logger.error("Error fetching Gmail messages for user {}: {}", user.getUserId(), e.getMessage());
+            }
+            
+        } catch (Exception e) {
+            logger.error("Error processing user emails for {}: {}", user.getUserId(), e.getMessage());
+        }
+    }
+    
+    private void processGmailMessagesDirectly(User user, List<Platform> userPlatforms, List<String> categoryNames) {
+        try {
+            logger.debug("Processing Gmail messages directly for user: {}", user.getUserId());
+            
+            // Fetch emails for processing without persisting to Item table
+            List<GmailService.EmailData> emails = gmailService.fetchEmailsForProcessing(user);
+            
+            if (!emails.isEmpty()) {
+                logger.info("Processing {} emails for user: {}", emails.size(), user.getUserId());
+                
+                for (GmailService.EmailData emailData : emails) {
                     // Filter email by platform if user has defined platforms
-                    if (!isPlatformAllowed(email.getSender(), userPlatforms)) {
-                        logger.info("Email from {} skipped - not in user's allowed platforms", email.getSender());
+                    if (!isPlatformAllowed(emailData.sender, userPlatforms)) {
+                        logger.info("Email from {} skipped - not in user's allowed platforms", emailData.sender);
                         continue;
                     }
                     
-                    processAndSaveEmail(email, user, categoryNames);
-                    // Update the user config with the last processed email info
-                    if (email.getGmailMessageId() != null) {
-                        updateLastProcessedEmail(user, email.getGmailMessageId());
-                    }
+                    // Process email directly without storing to Item table
+                    processEmailDirectly(emailData, user, userPlatforms, categoryNames);
                 }
                 
             } else {
@@ -118,7 +152,67 @@ public class EmailProcessingSchedulerService {
             }
             
         } catch (Exception e) {
-            logger.error("Error processing emails for user {}: {}", user.getUserId(), e.getMessage());
+            logger.error("Error in direct Gmail processing for user {}: {}", user.getUserId(), e.getMessage());
+        }
+    }
+    
+    private void processEmailDirectly(GmailService.EmailData emailData, User user, List<Platform> userPlatforms, List<String> categoryNames) {
+        try {
+            logger.info("Processing email from sender: {} with subject: {} for user: {}", 
+                emailData.sender, emailData.subject, user.getUserId());
+            
+            // Analyze email with Gemini AI
+            logger.debug("Sending email to Gemini for analysis - Subject: {}, Sender: {}", 
+                emailData.subject, emailData.sender);
+            
+            GeminiEmailAnalysisService.EmailAnalysisResult analysis = 
+                emailAnalysisService.analyzeEmail(emailData.body != null ? emailData.body : emailData.snippet, 
+                    emailData.subject, emailData.sender, categoryNames);
+            
+            logger.info("Gemini analysis result - isOrderRelated: {}, orderId: {}, isNewOrder: {}, shipmentStatus: {}", 
+                analysis.isOrderRelatedEmail(), analysis.getOrderId(), analysis.isNewOrder(), analysis.getShipmentStatus());
+            
+            // Only process order-related emails
+            if (analysis.isOrderRelatedEmail()) {
+                logger.info("Email identified as order-related");
+                
+                // Find matching platform from sender email
+                Platform matchingPlatform = findMatchingPlatform(emailData.sender, userPlatforms);
+                logger.debug("Matching platform: {}", matchingPlatform != null ? matchingPlatform.getPlatformName() : "None");
+                
+                // Create or update order
+                handleOrderCreationOrUpdate(user, analysis, matchingPlatform);
+                
+                // Archive email if auto-archive is enabled in user config
+                if (user.getUserConfig() != null && 
+                    user.getUserConfig().getAutoArchiveOrderEmails() != null &&
+                    user.getUserConfig().getAutoArchiveOrderEmails()) {
+                    
+                    logger.debug("Auto-archive is enabled for user: {}", user.getUserId());
+                    
+                    if (emailData.messageId != null) {
+                        gmailService.archiveEmail(user, emailData.messageId);
+                        logger.info("Archived order email for user: {} with message ID: {}", 
+                            user.getUserId(), emailData.messageId);
+                    } else {
+                        logger.warn("Gmail message ID is null, cannot archive email for user: {}", user.getUserId());
+                    }
+                } else {
+                    logger.debug("Auto-archive is disabled for user: {}", user.getUserId());
+                }
+                
+                // Update the user config with the last processed email info
+                if (emailData.messageId != null) {
+                    updateLastProcessedEmail(user, emailData.messageId);
+                }
+                
+            } else {
+                logger.info("Email skipped - NOT order-related from sender: {}", emailData.sender);
+            }
+            
+        } catch (Exception e) {
+            logger.error("Error processing email from sender {} for user {}: {}", 
+                emailData.sender, user.getUserId(), e.getMessage(), e);
         }
     }
     
@@ -175,71 +269,6 @@ public class EmailProcessingSchedulerService {
             }
         } catch (Exception e) {
             logger.warn("Failed to update last processed email info for user {}: {}", user.getUserId(), e.getMessage());
-        }
-    }
-    
-    private void processAndSaveEmail(Item email, User user, List<String> userCategories) {
-        try {
-            email.setUserId(user.getUserId());
-            
-            logger.info("Processing email from sender: {} with subject: {} for user: {}", 
-                email.getSender(), email.getSubject(), user.getUserId());
-            
-            // Analyze email with Gemini AI
-            logger.debug("Sending email to Gemini for analysis - Subject: {}, Sender: {}", 
-                email.getSubject(), email.getSender());
-            
-            GeminiEmailAnalysisService.EmailAnalysisResult analysis = 
-                emailAnalysisService.analyzeEmail(email.getBody() != null ? email.getBody() : email.getSnippet(), 
-                    email.getSubject(), email.getSender(), userCategories);
-            
-            logger.info("Gemini analysis result - isOrderRelated: {}, orderId: {}, isNewOrder: {}, shipmentStatus: {}", 
-                analysis.isOrderRelatedEmail(), analysis.getOrderId(), analysis.isNewOrder(), analysis.getShipmentStatus());
-            
-            // Only process order-related emails
-            if (analysis.isOrderRelatedEmail()) {
-                logger.info("Email identified as order-related");
-                
-                // Get user's platforms
-                List<Platform> userPlatforms = platformRepository.findByUserAndIsDeletedFalse(user);
-                
-                // Find matching platform from sender email
-                Platform matchingPlatform = findMatchingPlatform(email.getSender(), userPlatforms);
-                logger.debug("Matching platform: {}", matchingPlatform != null ? matchingPlatform.getPlatformName() : "None");
-                
-                // Create or update order (do NOT save to Item table)
-                handleOrderCreationOrUpdate(user, analysis, matchingPlatform);
-                
-                // Archive email if auto-archive is enabled in user config
-                if (user.getUserConfig() != null && 
-                    user.getUserConfig().getAutoArchiveOrderEmails() != null &&
-                    user.getUserConfig().getAutoArchiveOrderEmails()) {
-                    
-                    logger.debug("Auto-archive is enabled for user: {}", user.getUserId());
-                    
-                    if (email.getGmailMessageId() != null) {
-                        gmailService.archiveEmail(user, email.getGmailMessageId());
-                        logger.info("Archived order email for user: {} with message ID: {}", 
-                            user.getUserId(), email.getGmailMessageId());
-                    } else {
-                        logger.warn("Gmail message ID is null, cannot archive email for user: {}", user.getUserId());
-                    }
-                } else {
-                    logger.debug("Auto-archive is disabled for user: {}", user.getUserId());
-                }
-                
-                // Update the user config with the last processed email info
-                if (email.getGmailMessageId() != null) {
-                    updateLastProcessedEmail(user, email.getGmailMessageId());
-                }
-                
-            } else {
-                logger.info("Email skipped - NOT order-related from sender: {}", email.getSender());
-            }
-            
-        } catch (Exception e) {
-            logger.error("Error processing email from sender {} for user {}: {}", 
-                email.getSender(), user.getUserId(), e.getMessage(), e);
         }
     }
     

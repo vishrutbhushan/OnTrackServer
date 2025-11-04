@@ -10,17 +10,12 @@ import com.google.api.services.gmail.model.Message;
 import com.google.auth.http.HttpCredentialsAdapter;
 import com.google.auth.oauth2.AccessToken;
 import com.google.auth.oauth2.GoogleCredentials;
-import com.project.onTrackServer.model.Item;
 import com.project.onTrackServer.model.User;
-import com.project.onTrackServer.repository.ItemRepository;
-import com.project.onTrackServer.exception.GmailAuthenticationException;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
 import java.io.IOException;
 import java.security.GeneralSecurityException;
-import java.time.LocalDateTime;
-import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
@@ -32,125 +27,119 @@ public class GmailService {
     private static final String APPLICATION_NAME = "OnTrack Server";
     private static final JsonFactory JSON_FACTORY = GsonFactory.getDefaultInstance();
     
-    public List<Item> fetchEmailsFromGmail(User user) {
-        log.info("Fetching emails from Gmail for user: {}", user.getUserId());
+    /**
+     * Simple email data holder for processing (not persisted to database)
+     */
+    public static class EmailData {
+        public String messageId;
+        public String subject;
+        public String sender;
+        public String snippet;
+        public String body;
+        
+        public EmailData(String messageId, String subject, String sender, String snippet, String body) {
+            this.messageId = messageId;
+            this.subject = subject;
+            this.sender = sender;
+            this.snippet = snippet;
+            this.body = body;
+        }
+    }
+    
+    /**
+     * Fetch emails from Gmail for processing without persisting to database.
+     * Used by EmailProcessingSchedulerService for email analysis and order creation.
+     * Only returns emails that have not been processed before (tracks by message ID).
+     * 
+     * @param user The user to fetch emails for
+     * @return List of EmailData objects with email content
+     */
+    public List<EmailData> fetchEmailsForProcessing(User user) {
+        log.info("Fetching emails from Gmail for processing: {}", user.getUserId());
         
         try {
             Gmail service = getGmailService(user);
+            int maxResults = 2; // Fetch more to find new ones
+            
+            // If we have a last processed email ID, only fetch newer emails
+            String lastProcessedId = null;
+            if (user.getUserConfig() != null && user.getUserConfig().getLastProcessedEmailId() != null) {
+                lastProcessedId = user.getUserConfig().getLastProcessedEmailId();
+                log.info("Fetching NEW emails after message ID: {} (subsequent run)", lastProcessedId);
+            } else {
+                log.info("First run - fetching last {} emails", maxResults);
+            }
+            
             ListMessagesResponse listResponse = service.users().messages()
                 .list("me")
-                .setMaxResults(10L)
+                .setMaxResults((long) maxResults)
                 .execute();
-                
+            
             List<Message> messages = listResponse.getMessages();
             if (messages == null || messages.isEmpty()) {
                 log.info("No messages found for user: {}", user.getUserId());
                 return new ArrayList<>();
             }
             
-            log.info("Found {} messages for user: {}", messages.size(), user.getUserId());
+            log.info("Found {} messages for user: {} - filtering for unprocessed ones", messages.size(), user.getUserId());
             
-            return messages.stream()
-                .map(message -> getEmailItem(service, message, user.getUserId()))
-                .filter(item -> item != null)
-                .toList();
+            // Gmail returns emails in newest-first order (reverse chronological)
+            // We need to collect all emails BEFORE the lastProcessedId (newer than it)
+            List<EmailData> emailDataList = new ArrayList<>();
+            
+            if (lastProcessedId == null) {
+                // First run - process all fetched emails
+                for (Message message : messages) {
+                    EmailData emailData = extractEmailData(service, message);
+                    if (emailData != null) {
+                        emailDataList.add(emailData);
+                        log.debug("Added email for processing (first run): {} from {}", emailData.messageId, emailData.sender);
+                    }
+                }
+            } else {
+                // Subsequent runs - only add emails that come BEFORE lastProcessedId in the list
+                // (which means they are NEWER, since Gmail returns newest first)
+                for (Message message : messages) {
+                    if (message.getId().equals(lastProcessedId)) {
+                        // We've reached the last processed email, stop here
+                        log.debug("Reached last processed message ID: {}, stopping collection", lastProcessedId);
+                        break;
+                    }
+                    
+                    EmailData emailData = extractEmailData(service, message);
+                    if (emailData != null) {
+                        emailDataList.add(emailData);
+                        log.debug("Added NEW email for processing: {} from {}", emailData.messageId, emailData.sender);
+                    }
+                }
                 
-        } catch (IOException e) {
-            log.error("Error fetching emails from Gmail for user {}: {}", user.getUserId(), e.getMessage());
-            
-            // Check if it's an authentication error
-            if (e.getMessage().contains("401") || e.getMessage().contains("Invalid Credentials") || 
-                e.getMessage().contains("UNAUTHENTICATED") || e.getMessage().contains("authError")) {
-                throw new GmailAuthenticationException("Gmail authentication failed: " + e.getMessage(), e);
+                // If we never found lastProcessedId, it means it's older than our fetch
+                // In this case, all fetched emails are newer, so they're all new
+                if (emailDataList.size() == messages.size()) {
+                    log.warn("Last processed email ID {} not found in fetched messages (likely archived/deleted), treating all {} fetched messages as new", 
+                        lastProcessedId, messages.size());
+                }
             }
             
+            log.info("Returning {} unprocessed emails for user: {}", emailDataList.size(), user.getUserId());
+            return emailDataList;
+            
+        } catch (IOException e) {
+            log.error("Error fetching emails from Gmail for user {}: {}", user.getUserId(), e.getMessage());
             throw new RuntimeException("Failed to fetch emails from Gmail: " + e.getMessage());
         } catch (Exception e) {
-            log.error("Unexpected error for user {}: {}", user.getUserId(), e.getMessage());
+            log.error("Unexpected error fetching emails for user {}: {}", user.getUserId(), e.getMessage());
             throw new RuntimeException("Failed to fetch emails: " + e.getMessage());
         }
     }
     
-    public List<Item> fetchNewEmailsFromGmail(User user, ItemRepository itemRepository) {
-        log.info("Fetching new emails from Gmail for user: {}", user.getUserId());
-        
-        try {
-            Gmail service = getGmailService(user);
-            
-            // Build query to fetch emails newer than the last processed email
-            String query = "";
-            int maxResults = 10; // Default: fetch last 10 for first time
-            
-            // If we have a last processed email time, fetch only newer ones
-            if (user.getUserConfig() != null && user.getUserConfig().getLastProcessedEmailTime() != null) {
-                LocalDateTime lastTime = user.getUserConfig().getLastProcessedEmailTime();
-                // Format: after:2023/12/25 for Gmail API
-                String dateStr = lastTime.format(DateTimeFormatter.ofPattern("yyyy/MM/dd"));
-                query = "after:" + dateStr;
-                maxResults = 50; // Fetch more after first run to catch up
-                log.info("Fetching emails after: {} (subsequent run)", dateStr);
-            } else {
-                log.info("First run - fetching last 10 emails");
-            }
-            
-            // Fetch emails
-            ListMessagesResponse listResponse = service.users().messages()
-                .list("me")
-                .setMaxResults((long)maxResults)
-                .setQ(query)
-                .execute();
-                
-            List<Message> messages = listResponse.getMessages();
-            if (messages == null || messages.isEmpty()) {
-                log.info("No new messages found for user: {}", user.getUserId());
-                return new ArrayList<>();
-            }
-            
-            log.info("Found {} messages from Gmail API for user: {}", messages.size(), user.getUserId());
-            
-            // Reverse to process oldest first
-            java.util.Collections.reverse(messages);
-            
-            List<Item> newEmails = new ArrayList<>();
-            
-            for (Message message : messages) {
-                Item emailItem = getEmailItem(service, message, user.getUserId());
-                if (emailItem != null) {
-                    // Check if this email already exists in the database by Gmail message ID
-                    if (!itemRepository.existsByGmailMessageId(emailItem.getGmailMessageId())) {
-                        newEmails.add(emailItem);
-                    } else {
-                        log.debug("Email with message ID {} already processed, skipping", emailItem.getGmailMessageId());
-                    }
-                }
-            }
-            
-            log.info("Found {} truly new emails for user: {}", newEmails.size(), user.getUserId());
-            return newEmails;
-                
-        } catch (IOException e) {
-            log.error("Error fetching new emails from Gmail for user {}: {}", user.getUserId(), e.getMessage());
-            
-            // Check if it's an authentication error
-            if (e.getMessage().contains("401") || e.getMessage().contains("Invalid Credentials") || 
-                e.getMessage().contains("UNAUTHENTICATED") || e.getMessage().contains("authError")) {
-                throw new GmailAuthenticationException("Gmail authentication failed: " + e.getMessage(), e);
-            }
-            
-            throw new RuntimeException("Failed to fetch new emails from Gmail: " + e.getMessage());
-        } catch (Exception e) {
-            log.error("Unexpected error fetching new emails for user {}: {}", user.getUserId(), e.getMessage());
-            throw new RuntimeException("Failed to fetch new emails: " + e.getMessage());
-        }
-    }
-    
-    private Item getEmailItem(Gmail service, Message message, String userId) {
+    private EmailData extractEmailData(Gmail service, Message message) {
         try {
             Message fullMessage = service.users().messages()
                 .get("me", message.getId())
-                .setFormat("full")  // Changed from "metadata" to "full" to fetch complete email body
+                .setFormat("full")
                 .execute();
-                
+            
             String subject = "No Subject";
             String from = "Unknown Sender";
             
@@ -164,17 +153,10 @@ public class GmailService {
                 }
             }
             
-            Item item = new Item();
-            item.setGmailMessageId(message.getId());
-            item.setSubject(subject);
-            item.setSender(from);
-            item.setSnippet(fullMessage.getSnippet() != null ? fullMessage.getSnippet() : "");
-            
-            // Extract and set the full email body
+            String snippet = fullMessage.getSnippet() != null ? fullMessage.getSnippet() : "";
             String body = extractEmailBody(fullMessage);
-            item.setBody(body != null ? body : "");
             
-            return item;
+            return new EmailData(message.getId(), subject, from, snippet, body != null ? body : "");
             
         } catch (Exception e) {
             log.error("Error processing message {}: {}", message.getId(), e.getMessage());
@@ -198,7 +180,6 @@ public class GmailService {
             // Try to get body from payload
             if (message.getPayload().getBody() != null && message.getPayload().getBody().getData() != null) {
                 String data = message.getPayload().getBody().getData();
-                // Decode base64url encoded data
                 byte[] decoded = java.util.Base64.getUrlDecoder().decode(data);
                 return new String(decoded, java.nio.charset.StandardCharsets.UTF_8);
             }
@@ -206,7 +187,6 @@ public class GmailService {
             // If payload has parts (multipart email), extract text from parts
             if (message.getPayload().getParts() != null && !message.getPayload().getParts().isEmpty()) {
                 for (com.google.api.services.gmail.model.MessagePart part : message.getPayload().getParts()) {
-                    // Look for plain text part
                     if (part.getMimeType() != null && part.getMimeType().equals("text/plain")) {
                         if (part.getBody() != null && part.getBody().getData() != null) {
                             String data = part.getBody().getData();
@@ -216,7 +196,6 @@ public class GmailService {
                     }
                 }
                 
-                // If no plain text found, try HTML
                 for (com.google.api.services.gmail.model.MessagePart part : message.getPayload().getParts()) {
                     if (part.getMimeType() != null && part.getMimeType().equals("text/html")) {
                         if (part.getBody() != null && part.getBody().getData() != null) {
