@@ -38,14 +38,6 @@ public class UserController {
             .orElse(ResponseEntity.notFound().build());
     }
     
-    @GetMapping("/email/{email}")
-    public ResponseEntity<User> getUserByEmail(@PathVariable String email) {
-        logger.info("Get user by email request for: {}", email);
-        return userService.getUserByEmail(email)
-            .map(ResponseEntity::ok)
-            .orElse(ResponseEntity.notFound().build());
-    }
-    
     @PutMapping("/{userId}/access-token")
     public ResponseEntity<UserDTO> updateAccessToken(
             @PathVariable String userId,
@@ -74,26 +66,5 @@ public class UserController {
         userDTO.setUserId(userId);
         UserDTO updatedUser = userService.saveUser(userDTO);
         return ResponseEntity.ok(updatedUser);
-    }
-    
-    @DeleteMapping("/{userId}")
-    public ResponseEntity<ApiResponse> deleteUser(@PathVariable String userId) {
-        logger.info("Delete user request for: {}", userId);
-        userService.deleteUser(userId);
-        return ResponseEntity.ok(new ApiResponse(true, "User deleted successfully"));
-    }
-    
-    @ExceptionHandler(IllegalArgumentException.class)
-    public ResponseEntity<ApiResponse> handleIllegalArgument(IllegalArgumentException e) {
-        logger.error("Error: {}", e.getMessage());
-        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
-            .body(new ApiResponse(false, e.getMessage()));
-    }
-    
-    @ExceptionHandler(Exception.class)
-    public ResponseEntity<ApiResponse> handleException(Exception e) {
-        logger.error("Unexpected error: {}", e.getMessage());
-        return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-            .body(new ApiResponse(false, "Internal server error: " + e.getMessage()));
     }
 }

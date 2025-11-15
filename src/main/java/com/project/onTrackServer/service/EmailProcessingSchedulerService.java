@@ -59,7 +59,7 @@ public class EmailProcessingSchedulerService {
     private NotificationService notificationService;
     
     @Autowired
-    private NotificationTemplateService notificationTemplateService;
+    private NotificationTemplates notificationTemplateService;
     
     @Value("${email.processing.schedule.interval:10}")
     private int intervalMinutes;
@@ -304,7 +304,7 @@ public class EmailProcessingSchedulerService {
                 
                 // Use notification template for order update
                 try {
-                    NotificationTemplateService.NotificationTemplate template = 
+                    NotificationTemplates.NotificationTemplate template = 
                         notificationTemplateService.getTemplate(analysis.getShipmentStatus(), analysis.getOrderId(), analysis.getProductName());
                     notificationService.sendNotification(user.getUserId(), template.getTitle(), template.getBody());
                     logger.info("Sent templated notification for order update: {}", analysis.getOrderId());
@@ -323,7 +323,7 @@ public class EmailProcessingSchedulerService {
                 
                 // Use notification template for new order (default to ORDERED status)
                 try {
-                    NotificationTemplateService.NotificationTemplate template = 
+                    NotificationTemplates.NotificationTemplate template = 
                         notificationTemplateService.getTemplate(analysis.getShipmentStatus() != null ? analysis.getShipmentStatus() : "ordered", 
                             analysis.getOrderId(), analysis.getProductName());
                     notificationService.sendNotification(user.getUserId(), template.getTitle(), template.getBody());
@@ -343,7 +343,7 @@ public class EmailProcessingSchedulerService {
                 
                 // Use notification template for order created from email
                 try {
-                    NotificationTemplateService.NotificationTemplate template = 
+                    NotificationTemplates.NotificationTemplate template = 
                         notificationTemplateService.getTemplate(analysis.getShipmentStatus() != null ? analysis.getShipmentStatus() : "ordered", 
                             analysis.getOrderId(), analysis.getProductName());
                     notificationService.sendNotification(user.getUserId(), template.getTitle(), template.getBody());

@@ -15,13 +15,14 @@ import java.util.List;
 @RequestMapping("/api/platforms")
 @CrossOrigin(origins = "*")
 @Slf4j
-public class PlatformController {
+public class PlatformController implements CrudController<Platform> {
     
     @Autowired
     private PlatformService platformService;
     
+    @Override
     @PostMapping("/{userId}")
-    public ResponseEntity<Platform> createPlatform(
+    public ResponseEntity<Platform> create(
             @PathVariable String userId,
             @RequestBody Platform platform) {
         log.info("Create platform request for user: {}", userId);
@@ -29,53 +30,21 @@ public class PlatformController {
         return ResponseEntity.status(HttpStatus.CREATED).body(created);
     }
     
-    @GetMapping("/{userId}/{platformId}")
-    public ResponseEntity<Platform> getPlatform(
-            @PathVariable String userId,
-            @PathVariable Long platformId) {
-        log.info("Get platform: {} for user: {}", platformId, userId);
-        return platformService.getPlatform(platformId, userId)
-                .map(ResponseEntity::ok)
-                .orElse(ResponseEntity.notFound().build());
-    }
-    
+    @Override
     @GetMapping("/{userId}")
-    public ResponseEntity<List<Platform>> getUserPlatforms(@PathVariable String userId) {
+    public ResponseEntity<List<Platform>> getUserResources(@PathVariable String userId) {
         log.info("Get all platforms for user: {}", userId);
         List<Platform> platforms = platformService.getUserPlatforms(userId);
         return ResponseEntity.ok(platforms);
     }
-    
-    @PutMapping("/{userId}/{platformId}")
-    public ResponseEntity<Platform> updatePlatform(
-            @PathVariable String userId,
-            @PathVariable Long platformId,
-            @RequestBody Platform platform) {
-        log.info("Update platform: {} for user: {}", platformId, userId);
-        Platform updated = platformService.updatePlatform(platformId, userId, platform);
-        return ResponseEntity.ok(updated);
-    }
-    
+
+    @Override
     @DeleteMapping("/{userId}/{platformId}")
-    public ResponseEntity<ApiResponse> deletePlatform(
+    public ResponseEntity<ApiResponse> delete(
             @PathVariable String userId,
             @PathVariable Long platformId) {
         log.info("Delete platform: {} for user: {}", platformId, userId);
         platformService.deletePlatform(platformId, userId);
         return ResponseEntity.ok(new ApiResponse(true, "Platform deleted successfully"));
-    }
-    
-    @ExceptionHandler(IllegalArgumentException.class)
-    public ResponseEntity<ApiResponse> handleIllegalArgument(IllegalArgumentException e) {
-        log.error("Error: {}", e.getMessage());
-        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
-                .body(new ApiResponse(false, e.getMessage()));
-    }
-    
-    @ExceptionHandler(Exception.class)
-    public ResponseEntity<ApiResponse> handleException(Exception e) {
-        log.error("Unexpected error: {}", e.getMessage());
-        return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                .body(new ApiResponse(false, "Internal server error: " + e.getMessage()));
     }
 }

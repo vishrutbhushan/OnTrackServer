@@ -113,39 +113,5 @@ public class NotificationService {
             throw new RuntimeException("Failed to send notification: " + e.getMessage(), e);
         }
     }
-    
-    public void sendTestNotification(String userId) {
-        sendNotification(
-            userId, 
-            "OnTrack Test Notification", 
-            "This is a test notification from OnTrack backend! 🚀"
-        );
-    }
-    
-    public void sendNotificationToToken(String fcmToken, String title, String messageBody) {
-        try {
-            logger.info("Sending notification directly to FCM token: {}...", fcmToken.substring(0, Math.min(fcmToken.length(), 20)));
-            
-            // Build the notification
-            Notification notification = Notification.builder()
-                    .setTitle(title)
-                    .setBody(messageBody)
-                    .build();
-            
-            // Build the message
-            Message message = Message.builder()
-                    .setToken(fcmToken)
-                    .setNotification(notification)
-                    .putData("timestamp", String.valueOf(System.currentTimeMillis()))
-                    .build();
-            
-            // Send the message
-            String response = FirebaseMessaging.getInstance(firebaseApp).send(message);
-            logger.info("Successfully sent notification to FCM token, response: {}", response);
-            
-        } catch (Exception e) {
-            logger.error("Error sending notification to FCM token: {}", e.getMessage(), e);
-            throw new RuntimeException("Failed to send notification: " + e.getMessage(), e);
-        }
-    }
+
 }

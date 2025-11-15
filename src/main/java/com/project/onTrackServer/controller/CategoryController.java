@@ -15,13 +15,14 @@ import java.util.List;
 @RequestMapping("/api/categories")
 @CrossOrigin(origins = "*")
 @Slf4j
-public class CategoryController {
+public class CategoryController implements CrudController<Category> {
     
     @Autowired
     private CategoryService categoryService;
     
+    @Override
     @PostMapping("/{userId}")
-    public ResponseEntity<Category> createCategory(
+    public ResponseEntity<Category> create(
             @PathVariable String userId,
             @RequestBody Category category) {
         log.info("Create category request for user: {}", userId);
@@ -29,53 +30,22 @@ public class CategoryController {
         return ResponseEntity.status(HttpStatus.CREATED).body(created);
     }
     
-    @GetMapping("/{userId}/{categoryId}")
-    public ResponseEntity<Category> getCategory(
-            @PathVariable String userId,
-            @PathVariable Long categoryId) {
-        log.info("Get category: {} for user: {}", categoryId, userId);
-        return categoryService.getCategory(categoryId, userId)
-                .map(ResponseEntity::ok)
-                .orElse(ResponseEntity.notFound().build());
-    }
-    
+    @Override
     @GetMapping("/{userId}")
-    public ResponseEntity<List<Category>> getUserCategories(@PathVariable String userId) {
+    public ResponseEntity<List<Category>> getUserResources(@PathVariable String userId) {
         log.info("Get all categories for user: {}", userId);
         List<Category> categories = categoryService.getUserCategories(userId);
         return ResponseEntity.ok(categories);
     }
     
-    @PutMapping("/{userId}/{categoryId}")
-    public ResponseEntity<Category> updateCategory(
-            @PathVariable String userId,
-            @PathVariable Long categoryId,
-            @RequestBody Category category) {
-        log.info("Update category: {} for user: {}", categoryId, userId);
-        Category updated = categoryService.updateCategory(categoryId, userId, category);
-        return ResponseEntity.ok(updated);
-    }
-    
+    @Override
     @DeleteMapping("/{userId}/{categoryId}")
-    public ResponseEntity<ApiResponse> deleteCategory(
+    public ResponseEntity<ApiResponse> delete(
             @PathVariable String userId,
             @PathVariable Long categoryId) {
         log.info("Delete category: {} for user: {}", categoryId, userId);
         categoryService.deleteCategory(categoryId, userId);
         return ResponseEntity.ok(new ApiResponse(true, "Category deleted successfully"));
     }
-    
-    @ExceptionHandler(IllegalArgumentException.class)
-    public ResponseEntity<ApiResponse> handleIllegalArgument(IllegalArgumentException e) {
-        log.error("Error: {}", e.getMessage());
-        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
-                .body(new ApiResponse(false, e.getMessage()));
-    }
-    
-    @ExceptionHandler(Exception.class)
-    public ResponseEntity<ApiResponse> handleException(Exception e) {
-        log.error("Unexpected error: {}", e.getMessage());
-        return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                .body(new ApiResponse(false, "Internal server error: " + e.getMessage()));
-    }
+
 }

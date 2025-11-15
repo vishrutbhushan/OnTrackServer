@@ -9,9 +9,9 @@ import org.slf4j.LoggerFactory;
  * Each status has a customized template with placeholders for dynamic data
  */
 @Service
-public class NotificationTemplateService {
+public class NotificationTemplates {
     
-    private static final Logger logger = LoggerFactory.getLogger(NotificationTemplateService.class);
+    private static final Logger logger = LoggerFactory.getLogger(NotificationTemplates.class);
     
     /**
      * Enum for all possible order statuses
@@ -103,7 +103,7 @@ public class NotificationTemplateService {
      * Template: Order Placed
      */
     private NotificationTemplate getOrderedTemplate(String orderId, String productName) {
-        String title = "✅ Order Confirmed";
+        String title = "Order Confirmed";
         String body = "Your order " + orderId + " has been confirmed!\n" +
                      "Product: " + (productName != null ? productName : "Your item");
         return new NotificationTemplate(title, body);
@@ -113,7 +113,7 @@ public class NotificationTemplateService {
      * Template: Order Shipped
      */
     private NotificationTemplate getShippedTemplate(String orderId, String productName) {
-        String title = "📦 Order Shipped";
+        String title = "Order Shipped";
         String body = "Your order " + orderId + " is on its way!\n" +
                      "Item: " + (productName != null ? productName : "Your item");
         return new NotificationTemplate(title, body);
@@ -123,7 +123,7 @@ public class NotificationTemplateService {
      * Template: Out for Delivery
      */
     private NotificationTemplate getOutOfDeliveryTemplate(String orderId, String productName) {
-        String title = "🚚 Out for Delivery";
+        String title = "Out for Delivery";
         String body = "Great news! Order " + orderId + " is out for delivery today.\n" +
                      "Item: " + (productName != null ? productName : "Your item");
         return new NotificationTemplate(title, body);
@@ -133,7 +133,7 @@ public class NotificationTemplateService {
      * Template: Order Delivered
      */
     private NotificationTemplate getDeliveredTemplate(String orderId, String productName) {
-        String title = "🎉 Order Delivered";
+        String title = "Order Delivered";
         String body = "Your order " + orderId + " has been delivered!\n" +
                      "Item: " + (productName != null ? productName : "Your item");
         return new NotificationTemplate(title, body);
@@ -143,7 +143,7 @@ public class NotificationTemplateService {
      * Template: Order Cancelled
      */
     private NotificationTemplate getCancelledTemplate(String orderId, String productName) {
-        String title = "❌ Order Cancelled";
+        String title = "Order Cancelled";
         String body = "Order " + orderId + " has been cancelled.\n" +
                      "Item: " + (productName != null ? productName : "Your item") ;
         return new NotificationTemplate(title, body);
@@ -153,21 +153,11 @@ public class NotificationTemplateService {
      * Default template for unknown status
      */
     private NotificationTemplate getDefaultTemplate(String orderId, String productName) {
-        String title = "📭 Order Update";
+        String title = "Order Update";
         String body = "Order " + orderId + " update:\n" +
                      "Item: " + (productName != null ? productName : "Your item") + "\n" +
                      "Check your order status anytime.";
         return new NotificationTemplate(title, body);
     }
-    
-    /**
-     * Utility method to validate and normalize status values
-     */
-    public String normalizeStatus(String status) {
-        if (status == null) {
-            return null;
-        }
-        OrderStatus orderStatus = OrderStatus.fromCode(status);
-        return orderStatus != null ? orderStatus.getCode() : null;
-    }
+
 }
