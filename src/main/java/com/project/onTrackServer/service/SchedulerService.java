@@ -6,7 +6,6 @@ import org.slf4j.LoggerFactory;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
-import com.project.onTrackServer.Models.Email;
 import com.project.onTrackServer.Models.Notifications;
 import com.project.onTrackServer.Models.Order;
 import com.project.onTrackServer.Models.User;

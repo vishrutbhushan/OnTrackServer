@@ -1,4 +1,4 @@
-package com.project.onTrackServer.Models;
+package com.project.onTrackServer.service;
 
 import com.google.api.client.googleapis.javanet.GoogleNetHttpTransport;
 import com.google.api.client.json.gson.GsonFactory;
@@ -7,6 +7,7 @@ import com.google.api.services.gmail.model.*;
 import com.google.auth.http.HttpCredentialsAdapter;
 import com.google.auth.oauth2.AccessToken;
 import com.google.auth.oauth2.GoogleCredentials;
+import com.project.onTrackServer.Models.User;
 
 import lombok.Data;
 import org.slf4j.Logger;
