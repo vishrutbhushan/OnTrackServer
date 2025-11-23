@@ -55,5 +55,25 @@ public class UserConfig {
         return uc;
     }
 
-    
+    public static void updateLastProcessedEmailTime(Connection conn, Long userId, LocalDateTime time) throws SQLException {
+        String sql = "UPDATE user_config SET last_processed_email_time = ? WHERE user_id = ?";
+        try (PreparedStatement stmt = conn.prepareStatement(sql)) {
+            stmt.setTimestamp(1, Timestamp.valueOf(time));
+            stmt.setLong(2, userId);
+            stmt.executeUpdate();
+        }
+    }
+
+    public void save(Connection conn) throws SQLException {
+        String sql = "INSERT INTO user_config (user_id, polling_frequency, notification_enabled, last_processed_email_time, auto_archive_order_emails, is_deleted) VALUES (?, ?, ?, ?, ?, ?)";
+        try (PreparedStatement stmt = conn.prepareStatement(sql)) {
+            stmt.setLong(1, this.userId);
+            stmt.setInt(2, this.pollingFrequency != null ? this.pollingFrequency : 5);
+            stmt.setBoolean(3, this.notificationEnabled != null ? this.notificationEnabled : true);
+            stmt.setTimestamp(4, this.lastProcessedEmailTime != null ? Timestamp.valueOf(this.lastProcessedEmailTime) : null);
+            stmt.setBoolean(5, this.autoArchiveOrderEmails != null ? this.autoArchiveOrderEmails : true);
+            stmt.setBoolean(6, this.isDeleted != null ? this.isDeleted : false);
+            stmt.executeUpdate();
+        }
+    }
 }

@@ -10,6 +10,11 @@ import com.project.onTrackServer.Models.Email;
 import com.project.onTrackServer.Models.Notifications;
 import com.project.onTrackServer.Models.Order;
 import com.project.onTrackServer.Models.User;
+import com.project.onTrackServer.Models.UserConfig;
+import com.project.onTrackServer.jdbc.JdbcManager;
+
+import java.sql.Connection;
+import java.time.LocalDateTime;
 
 @Service
 public class SchedulerService {
@@ -40,6 +45,12 @@ public class SchedulerService {
                         not.sendOrderNotification();
                     }
                     email.archive();
+                }
+                // Update last processed email time
+                try (Connection conn = JdbcManager.getInstance().getConnection()) {
+                    UserConfig.updateLastProcessedEmailTime(conn, user.getId(), LocalDateTime.now());
+                } catch (Exception e) {
+                    logger.error("Error updating last processed email time for user {}: {}", user.getEmail(), e.getMessage());
                 }
             }
             logger.debug("Triggered processEmails");

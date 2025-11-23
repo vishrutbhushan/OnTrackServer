@@ -58,6 +58,18 @@ public class User {
             if (keys.next()) {
                 user.setId(keys.getLong(1));
                 user.setIsDeleted(false);
+                // Create default UserConfig
+                try {
+                    UserConfig config = new UserConfig();
+                    config.setUserId(user.getId());
+                    config.setPollingFrequency(5);
+                    config.setNotificationEnabled(true);
+                    config.setAutoArchiveOrderEmails(true);
+                    config.setIsDeleted(false);
+                    config.save(conn);
+                } catch (Exception e) {
+                    // Log error if needed
+                }
             }
             return user;
         }
