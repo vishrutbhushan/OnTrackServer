@@ -8,54 +8,33 @@ import java.security.GeneralSecurityException;
 import java.io.IOException;
 
 public class OnTrackEmailProcessor {
-    
-    
+
     private EmailProcessingSchedulerService schedulerService;
-    
+
     public static void main(String[] args) {
         OnTrackEmailProcessor app = new OnTrackEmailProcessor();
-        
         try {
             app.start();
-            
-            
-            
             Runtime.getRuntime().addShutdownHook(new Thread(app::stop));
-            
-            
             Thread.currentThread().join();
-            
         } catch (Exception e) {
-            
             System.exit(1);
         }
     }
-    
-    
+
     public void start() throws GeneralSecurityException, IOException {
-        
-        
-        
+
         EmailService emailService = new EmailService();
         NotificationService notificationService = new NotificationService();
-        
-        
         schedulerService = new EmailProcessingSchedulerService(
-            emailService, 
-            notificationService
-        );
-        
-        
+                emailService,
+                notificationService);
+
     }
-    
-    
+
     public void stop() {
-        
-        
         if (schedulerService != null) {
             schedulerService.shutdown();
         }
-        
-        
     }
 }
