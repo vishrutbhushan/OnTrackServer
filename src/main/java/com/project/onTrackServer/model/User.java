@@ -3,9 +3,6 @@ package com.project.onTrackServer.model;
 import java.sql.*;
 import com.project.onTrackServer.jdbc.JdbcManager;
 
-/**
- * User entity with manual JDBC methods for CRUD and queries.
- */
 public class User {
     private Long id;
     private String userId;
@@ -15,7 +12,7 @@ public class User {
     private String fcmToken;
     private Boolean isDeleted;
 
-    // --- Constructors ---
+    
     public User() {}
     public User(Long id, String userId, String email, String displayName, String accessToken, String fcmToken, Boolean isDeleted) {
         this.id = id;
@@ -27,7 +24,7 @@ public class User {
         this.isDeleted = isDeleted;
     }
 
-    // --- Getters and Setters ---
+    
     public Long getId() { return id; }
     public void setId(Long id) { this.id = id; }
     public String getUserId() { return userId; }
@@ -43,7 +40,7 @@ public class User {
     public Boolean getIsDeleted() { return isDeleted; }
     public void setIsDeleted(Boolean isDeleted) { this.isDeleted = isDeleted; }
 
-    // --- JDBC Methods ---
+    
     public User findByUserId(String userId) throws SQLException {
         Connection conn = JdbcManager.getInstance().getConnection();
         String sql = "SELECT * FROM users WHERE user_id = ?";

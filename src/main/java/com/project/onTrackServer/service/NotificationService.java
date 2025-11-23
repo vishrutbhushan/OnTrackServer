@@ -8,8 +8,6 @@ import com.google.firebase.messaging.Notification;
 import com.google.auth.oauth2.GoogleCredentials;
 import com.project.onTrackServer.model.User;
 import com.project.onTrackServer.model.UserConfig;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -19,7 +17,7 @@ import java.util.Properties;
 
 public class NotificationService {
 
-    private static final Logger logger = LoggerFactory.getLogger(NotificationService.class);
+    
     
     private String projectId;
     
@@ -30,9 +28,6 @@ public class NotificationService {
         initializeFirebase();
     }
     
-    /**
-     * Load configuration from properties file
-     */
     private void loadConfiguration() {
         try (InputStream input = getClass().getClassLoader().getResourceAsStream("application.properties")) {
             if (input != null) {
@@ -41,23 +36,20 @@ public class NotificationService {
                 this.projectId = props.getProperty("google.cloud.project-id");
                 
                 if (projectId == null || projectId.isEmpty()) {
-                    logger.warn("Firebase project ID not found in configuration");
                 }
             }
         } catch (IOException e) {
-            logger.error("Could not load configuration: {}", e.getMessage());
         }
     }
 
     public void initializeFirebase() {
         try {
             if (FirebaseApp.getApps().isEmpty()) {
-                // Load service account key from classpath
+                
                 try (InputStream serviceAccountStream = getClass().getClassLoader()
                         .getResourceAsStream("service-account-key.json")) {
                     
                     if (serviceAccountStream == null) {
-                        logger.error("Firebase service account key file not found");
                         throw new RuntimeException("Firebase service account key not found");
                     }
                     
@@ -67,54 +59,50 @@ public class NotificationService {
                             .build();
                     
                     firebaseApp = FirebaseApp.initializeApp(options);
-                    logger.info("Firebase Admin SDK initialized successfully for project: {}", projectId);
+                    
                 }
             } else {
                 firebaseApp = FirebaseApp.getInstance();
-                logger.info("Firebase Admin SDK already initialized");
+                
             }
         } catch (IOException e) {
-            logger.error("Failed to initialize Firebase Admin SDK: {}", e.getMessage(), e);
+            
             throw new RuntimeException("Firebase initialization failed", e);
         }
     }
 
     public void sendNotification(String userId, String title, String messageBody) {
         try {
-            // Get user details using model method
+            
             User userModel = new User();
             User user = userModel.findByUserId(userId);
             
             if (user == null) {
-                logger.warn("User not found: {}", userId);
                 throw new RuntimeException("User not found: " + userId);
             }
             
-            // Check if notifications are enabled for this user
+            
             UserConfig userConfig = getUserConfig(user);
             if (userConfig != null) {
                 Boolean notificationsEnabled = userConfig.getNotificationEnabled();
                 if (notificationsEnabled != null && !notificationsEnabled) {
-                    logger.info("Notifications are disabled for user: {}", userId);
                     return;
                 }
             }
             
             if (user.getFcmToken() == null) {
-                logger.warn("No FCM token found for user: {}", userId);
                 throw new RuntimeException("No FCM token found for user: " + userId);
             }
             
             String fcmToken = user.getFcmToken();
-            logger.info("Sending notification to user {}, FCM token: {}...", userId, fcmToken.substring(0, Math.min(fcmToken.length(), 20)));
             
-            // Build the notification
+            
             Notification notification = Notification.builder()
                     .setTitle(title)
                     .setBody(messageBody)
                     .build();
             
-            // Build the message
+            
             Message message = Message.builder()
                     .setToken(fcmToken)
                     .setNotification(notification)
@@ -122,23 +110,17 @@ public class NotificationService {
                     .putData("timestamp", String.valueOf(System.currentTimeMillis()))
                     .build();
             
-            // Send the message
-            String response = FirebaseMessaging.getInstance(firebaseApp).send(message);
-            logger.info("Successfully sent notification to user {}, FCM response: {}", userId, response);
+            FirebaseMessaging.getInstance(firebaseApp).send(message);
             
         } catch (Exception e) {
-            logger.error("Error sending notification to user {}: {}", userId, e.getMessage(), e);
             throw new RuntimeException("Failed to send notification: " + e.getMessage(), e);
         }
     }
 
     public static class NotificationTemplates {
     
-    private static final Logger logger = LoggerFactory.getLogger(NotificationTemplates.class);
     
-    /**
-     * Enum for all possible order statuses
-     */
+    
     public enum OrderStatus {
         ORDERED("ordered", "Order Placed"),
         SHIPPED("shipped", "Order Shipped"),
@@ -194,22 +176,14 @@ public class NotificationService {
         }
     }
     
-    /**
-     * Get notification template for a specific order status
-     * @param status The order status
-     * @param orderId The order ID
-     * @param productName The product name
-     * @return NotificationTemplate with title and body
-     */
     public NotificationTemplate getTemplate(String status, String orderId, String productName) {
         OrderStatus orderStatus = OrderStatus.fromCode(status);
         
         if (orderStatus == null) {
-            logger.warn("Unknown order status: {}, using default template", status);
             return getDefaultTemplate(orderId, productName);
         }
         
-        logger.debug("Generating notification template for status: {}", orderStatus.getDisplayName());
+        
         
         return switch (orderStatus) {
             case ORDERED -> getOrderedTemplate(orderId, productName);
@@ -220,9 +194,7 @@ public class NotificationService {
         };
     }
     
-    /**
-     * Template: Order Placed
-     */
+    
     private NotificationTemplate getOrderedTemplate(String orderId, String productName) {
         String title = "Order Confirmed";
         String body = "Your order " + orderId + " has been confirmed!\n" +
@@ -230,9 +202,7 @@ public class NotificationService {
         return new NotificationTemplate(title, body);
     }
     
-    /**
-     * Template: Order Shipped
-     */
+    
     private NotificationTemplate getShippedTemplate(String orderId, String productName) {
         String title = "Order Shipped";
         String body = "Your order " + orderId + " is on its way!\n" +
@@ -240,9 +210,7 @@ public class NotificationService {
         return new NotificationTemplate(title, body);
     }
     
-    /**
-     * Template: Out for Delivery
-     */
+    
     private NotificationTemplate getOutOfDeliveryTemplate(String orderId, String productName) {
         String title = "Out for Delivery";
         String body = "Great news! Order " + orderId + " is out for delivery today.\n" +
@@ -250,9 +218,7 @@ public class NotificationService {
         return new NotificationTemplate(title, body);
     }
     
-    /**
-     * Template: Order Delivered
-     */
+    
     private NotificationTemplate getDeliveredTemplate(String orderId, String productName) {
         String title = "Order Delivered";
         String body = "Your order " + orderId + " has been delivered!\n" +
@@ -260,9 +226,7 @@ public class NotificationService {
         return new NotificationTemplate(title, body);
     }
     
-    /**
-     * Template: Order Cancelled
-     */
+    
     private NotificationTemplate getCancelledTemplate(String orderId, String productName) {
         String title = "Order Cancelled";
         String body = "Order " + orderId + " has been cancelled.\n" +
@@ -270,9 +234,7 @@ public class NotificationService {
         return new NotificationTemplate(title, body);
     }
     
-    /**
-     * Default template for unknown status
-     */
+    
     private NotificationTemplate getDefaultTemplate(String orderId, String productName) {
         String title = "Order Update";
         String body = "Order " + orderId + " update:\n" +
@@ -283,19 +245,13 @@ public class NotificationService {
     
     } 
 
-    /**
-     * Get user config - placeholder implementation
-     */
     private UserConfig getUserConfig(User user) {
-        // This should be implemented based on your UserConfig model
-        // For now, creating a simple method to avoid compilation errors
         try {
             UserConfig config = new UserConfig();
-            // Assume notifications are enabled by default
+            
             config.setNotificationEnabled(true);
             return config;
         } catch (Exception e) {
-            logger.warn("Could not get user config for user {}: {}", user.getUserId(), e.getMessage());
             return null;
         }
     }

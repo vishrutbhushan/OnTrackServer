@@ -6,9 +6,6 @@ import java.util.ArrayList;
 import java.util.List;
 import com.project.onTrackServer.jdbc.JdbcManager;
 
-/**
- * Order entity with manual JDBC methods for CRUD and queries.
- */
 public class Order {
     private Long id;
     private Long userId;
@@ -19,7 +16,7 @@ public class Order {
     private Integer quantity;
     private Boolean isDeleted;
 
-    // --- Constructors ---
+    
     public Order() {}
     public Order(Long id, Long userId, Long platformId, Long categoryId, String orderId, BigDecimal price, Integer quantity, Boolean isDeleted) {
         this.id = id;
@@ -32,7 +29,7 @@ public class Order {
         this.isDeleted = isDeleted;
     }
 
-    // --- Getters and Setters ---
+    
     public Long getId() { return id; }
     public void setId(Long id) { this.id = id; }
     public Long getUserId() { return userId; }
@@ -50,7 +47,7 @@ public class Order {
     public Boolean getIsDeleted() { return isDeleted; }
     public void setIsDeleted(Boolean isDeleted) { this.isDeleted = isDeleted; }
 
-    // --- JDBC Methods ---
+    
     public static Order findByOrderId(String orderId) throws SQLException {
         Connection conn = JdbcManager.getInstance().getConnection();
         String sql = "SELECT * FROM orders WHERE order_id = ?";
@@ -119,7 +116,7 @@ public class Order {
         return o;
     }
 
-    // --- Additional JDBC Query Methods (from old repository) ---
+    
 
     public static BigDecimal getTotalSpent(Long userId) throws SQLException {
         Connection conn = JdbcManager.getInstance().getConnection();

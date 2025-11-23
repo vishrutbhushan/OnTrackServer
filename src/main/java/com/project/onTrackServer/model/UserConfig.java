@@ -5,9 +5,6 @@ import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 
-/**
- * UserConfig entity with manual JDBC methods for CRUD and queries.
- */
 public class UserConfig {
     private Long id;
     private Long userId;
@@ -17,7 +14,7 @@ public class UserConfig {
     private Boolean autoArchiveOrderEmails;
     private Boolean isDeleted;
 
-    // --- Constructors ---
+    
     public UserConfig() {}
     public UserConfig(Long id, Long userId, Integer pollingFrequency, Boolean notificationEnabled, LocalDateTime lastProcessedEmailTime, Boolean autoArchiveOrderEmails, Boolean isDeleted) {
         this.id = id;
@@ -29,7 +26,7 @@ public class UserConfig {
         this.isDeleted = isDeleted;
     }
 
-    // --- Getters and Setters ---
+    
     public Long getId() { return id; }
     public void setId(Long id) { this.id = id; }
     public Long getUserId() { return userId; }
@@ -45,7 +42,7 @@ public class UserConfig {
     public Boolean getIsDeleted() { return isDeleted; }
     public void setIsDeleted(Boolean isDeleted) { this.isDeleted = isDeleted; }
 
-    // --- JDBC Methods ---
+    
     public static UserConfig findByUser(Connection conn, Long userId) throws SQLException {
         String sql = "SELECT * FROM user_config WHERE user_id = ?";
         try (PreparedStatement stmt = conn.prepareStatement(sql)) {
@@ -84,5 +81,5 @@ public class UserConfig {
         return uc;
     }
 
-    // Add more CRUD methods as needed (insert, update, delete)
+    
 }
