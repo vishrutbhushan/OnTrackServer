@@ -1,6 +1,4 @@
-// ...existing code...
-
-
+ 
 package com.project.onTrackServer.service;
 
 import com.project.onTrackServer.model.User;
@@ -8,7 +6,12 @@ import com.project.onTrackServer.model.Order;
 import com.project.onTrackServer.model.Platform;
 import com.project.onTrackServer.model.Category;
 import com.project.onTrackServer.model.Vendor;
-// Repository imports removed; use model static methods
+import com.project.onTrackServer.repository.UserRepository;
+import com.project.onTrackServer.repository.OrderRepository;
+import com.project.onTrackServer.repository.UserConfigRepository;
+import com.project.onTrackServer.repository.PlatformRepository;
+import com.project.onTrackServer.repository.CategoryRepository;
+import com.project.onTrackServer.repository.VendorRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -32,13 +35,12 @@ public class EmailProcessingSchedulerService {
     @Value("${email.processing.schedule.interval:10}")
     private int intervalMinutes;
     
-    @Scheduled(fixedDelayString = "#{${email.processing.schedule.interval:10} * 60 * 1000}") // Convert minutes to milliseconds
+    @Scheduled(fixedDelayString = "#{${email.processing.schedule.interval:10} * 60 * 1000}")
     public void processEmails() {
         logger.info("Starting scheduled email processing...");
         
         try {
-            User userModel = new User();
-            List<User> allUsers = userModel.findAll();
+            List<User> allUsers = userRepository.findAll();
             
             for (User user : allUsers) {
                 if (hasValidAccessToken(user)) {
@@ -57,20 +59,18 @@ public class EmailProcessingSchedulerService {
         try {
             logger.info("Processing emails for user: {}", user.getUserId());
             
-            // Get user's platforms
-            Platform platformModel = new Platform();
-            List<Platform> userPlatforms = platformModel.findByUserAndIsDeletedFalse(user);
+            
+            List<Platform> userPlatforms = platformRepository.findByUserAndIsDeletedFalse(user);
             logger.debug("User has {} platforms", userPlatforms.size());
             
-            // Get user's categories
-            Category categoryModel = new Category();
-            List<Category> userCategories = categoryModel.findByUserAndIsDeletedFalse(user);
+            
+            List<Category> userCategories = categoryRepository.findByUserAndIsDeletedFalse(user);
             List<String> categoryNames = userCategories.stream()
                 .map(Category::getCategoryName)
                 .toList();
             logger.debug("User has {} categories: {}", userCategories.size(), categoryNames);
             
-            // Process emails directly without storing to Item table
+            
             processUserEmails(user, userPlatforms, categoryNames);
             
         } catch (Exception e) {
@@ -80,21 +80,14 @@ public class EmailProcessingSchedulerService {
     
     private void processUserEmails(User user, List<Platform> userPlatforms, List<String> categoryNames) {
         try {
-            // Create a temporary email model just for analysis (not persisted to Item table)
-            // Get the Gmail service and fetch raw messages
             logger.debug("Fetching Gmail messages for user: {}", user.getUserId());
             
-            // Get Gmail service and fetch messages
             String accessToken = user.getAccessToken();
             if (accessToken == null || "gmail_access_granted".equals(accessToken)) {
                 logger.warn("No valid Gmail access token for user: {}", user.getUserId());
                 return;
             }
-            
-            // Fetch messages from Gmail and process them directly
-            try {
-                // We'll create a simple in-memory email object for analysis
-                // This bypasses the Item table entirely
+                        try {
                 processGmailMessagesDirectly(user, userPlatforms, categoryNames);
             } catch (Exception e) {
                 logger.error("Error fetching Gmail messages for user {}: {}", user.getUserId(), e.getMessage());
@@ -109,26 +102,23 @@ public class EmailProcessingSchedulerService {
         try {
             logger.debug("Processing Gmail messages directly for user: {}", user.getUserId());
             
-            // Fetch emails for processing without persisting to Item table
-            // Gmail service filters server-side by timestamp, so we only get new emails
             List<GmailService.EmailData> emails = gmailService.fetchEmailsForProcessing(user);
             
             if (!emails.isEmpty()) {
                 logger.info("Processing {} NEW emails for user: {}", emails.size(), user.getUserId());
                 
-                for (EmailService.EmailData emailData : emails) {
-                    // Filter email by platform if user has defined platforms
+                for (GmailService.EmailData emailData : emails) {
+                    
                     if (!isPlatformAllowed(emailData.sender, userPlatforms)) {
                         logger.info("Email from {} skipped - not in user's allowed platforms", emailData.sender);
                         continue;
                     }
                     
-                    // Process email directly without storing to Item table
+                    
                     processEmailDirectly(emailData, user, userPlatforms, categoryNames);
                 }
                 
-                // Update last processed email timestamp after processing all emails
-                // This timestamp is used by Gmail service for server-side filtering in next run
+                
                 updateLastProcessedEmailTimestamp(user);
                 
             } else {
@@ -145,7 +135,7 @@ public class EmailProcessingSchedulerService {
             logger.info("Processing email from sender: {} with subject: {} for user: {}", 
                 emailData.sender, emailData.subject, user.getUserId());
             
-            // Analyze email with Gemini AI
+                    
             logger.debug("Sending email to Gemini for analysis - Subject: {}, Sender: {}", 
                 emailData.subject, emailData.sender);
             
@@ -156,18 +146,18 @@ public class EmailProcessingSchedulerService {
             logger.info("Gemini analysis result - isOrderRelated: {}, orderId: {}, isNewOrder: {}, shipmentStatus: {}", 
                 analysis.isOrderRelatedEmail(), analysis.getOrderId(), analysis.isNewOrder(), analysis.getShipmentStatus());
             
-            // Only process order-related emails
+            
             if (analysis.isOrderRelatedEmail()) {
                 logger.info("Email identified as order-related");
                 
-                // Find matching platform from sender email
+                
                 Platform matchingPlatform = findMatchingPlatform(emailData.sender, userPlatforms);
                 logger.debug("Matching platform: {}", matchingPlatform != null ? matchingPlatform.getPlatformName() : "None");
                 
-                // Create or update order
+                
                 handleOrderCreationOrUpdate(user, analysis, matchingPlatform);
                 
-                // Archive email if auto-archive is enabled in user config
+                
                 if (user.getUserConfig() != null && 
                     user.getUserConfig().getAutoArchiveOrderEmails() != null &&
                     user.getUserConfig().getAutoArchiveOrderEmails()) {
@@ -203,7 +193,7 @@ public class EmailProcessingSchedulerService {
         
         String senderLower = senderEmail.toLowerCase();
         
-        // Check if sender email contains any of the user's configured platform names
+            
         for (Platform platform : userPlatforms) {
             String platformName = platform.getPlatformName();
             if (platformName != null && senderLower.contains(platformName.toLowerCase())) {
@@ -225,7 +215,7 @@ public class EmailProcessingSchedulerService {
         
         String senderLower = senderEmail.toLowerCase();
         
-        // Find platform where sender email contains the platform name
+        
         for (Platform platform : userPlatforms) {
             String platformName = platform.getPlatformName();
             if (platformName != null && senderLower.contains(platformName.toLowerCase())) {
@@ -242,7 +232,7 @@ public class EmailProcessingSchedulerService {
         try {
             if (user.getUserConfig() != null) {
                 user.getUserConfig().setLastProcessedEmailTime(LocalDateTime.now());
-                user.getUserConfig().save();
+                userConfigRepository.save(user.getUserConfig());
                 logger.debug("Updated last processed email timestamp for user: {}", user.getUserId());
             }
         } catch (Exception e) {
@@ -260,21 +250,20 @@ public class EmailProcessingSchedulerService {
             logger.info("Processing order: {} for user: {} (isNewOrder: {})", 
                 analysis.getOrderId(), user.getUserId(), analysis.isNewOrder());
             
-            // Check if order already exists
-            Order orderModel = new Order();
-            Optional<Order> existingOrder = orderModel.findByOrderId(analysis.getOrderId());
+            
+            Optional<Order> existingOrder = orderRepository.findByOrderId(analysis.getOrderId());
             
             if (existingOrder.isPresent()) {
                 logger.info("Order {} already exists, updating it", analysis.getOrderId());
                 
-                // Update existing order
+                
                 Order order = existingOrder.get();
                 updateOrder(order, analysis, user, platform);
-                Order savedOrder = order.save();
+                Order savedOrder = orderRepository.save(order);
                 
                 logger.info("Successfully updated order: {} for user: {}", savedOrder.getId(), user.getUserId());
                 
-                // Use notification template for order update
+                
                 try {
                     NotificationTemplates.NotificationTemplate template = 
                         notificationTemplateService.getTemplate(analysis.getShipmentStatus(), analysis.getOrderId(), analysis.getProductName());
@@ -287,13 +276,13 @@ public class EmailProcessingSchedulerService {
             } else if (analysis.isNewOrder()) {
                 logger.info("Creating new order: {} for user: {}", analysis.getOrderId(), user.getUserId());
                 
-                // Create new order
+                
                 Order newOrder = createNewOrder(user, analysis, platform);
-                Order savedOrder = newOrder.save();
+                Order savedOrder = orderRepository.save(newOrder);
                 
                 logger.info("Successfully created new order with ID: {} for user: {}", savedOrder.getId(), user.getUserId());
                 
-                // Use notification template for new order (default to ORDERED status)
+                
                 try {
                     NotificationTemplates.NotificationTemplate template = 
                         notificationTemplateService.getTemplate(analysis.getShipmentStatus() != null ? analysis.getShipmentStatus() : "ordered", 
@@ -304,16 +293,16 @@ public class EmailProcessingSchedulerService {
                     logger.warn("Failed to send notification for new order {}: {}", analysis.getOrderId(), notifException.getMessage());
                 }
             } else {
-                // Order doesn't exist and isNewOrder=false, but we have an order ID so create it
+                
                 logger.info("Order not found but has valid order ID, creating new order: {} for user: {}", analysis.getOrderId(), user.getUserId());
                 
-                // Create new order from email data
+                
                 Order newOrder = createNewOrder(user, analysis, platform);
-                Order savedOrder = newOrder.save();
+                Order savedOrder = orderRepository.save(newOrder);
                 
                 logger.info("Successfully created order from email data: {} for user: {}", savedOrder.getId(), user.getUserId());
                 
-                // Use notification template for order created from email
+                
                 try {
                     NotificationTemplates.NotificationTemplate template = 
                         notificationTemplateService.getTemplate(analysis.getShipmentStatus() != null ? analysis.getShipmentStatus() : "ordered", 
@@ -340,31 +329,60 @@ public class EmailProcessingSchedulerService {
         order.setProductLink(analysis.getProductLink());
         order.setQuantity(analysis.getQuantity() != null ? analysis.getQuantity() : 1);
         
-        // Set Platform
+        
         if (platform != null) {
-            order.setPlatform(platform);
+            try {
+                Long platformId = platform.getId();
+                if (platformId != null) {
+                    Platform refreshedPlatform = platformRepository.findById(platformId).orElse(null);
+                    if (refreshedPlatform != null) {
+                        order.setPlatform(refreshedPlatform);
+                        logger.debug("Refreshed platform entity for order: {} with platform ID: {}", analysis.getOrderId(), platformId);
+                    } else {
+                        logger.warn("Platform with ID {} not found, order will not have platform assigned", platformId);
+                    }
+                } else {
+                    logger.warn("Platform ID is null, cannot refresh platform for order: {}", analysis.getOrderId());
+                }
+            } catch (Exception e) {
+                logger.warn("Error refreshing platform for order {}: {}", analysis.getOrderId(), e.getMessage());
+            }
+        } else {
+            logger.debug("Platform is null for order: {}, skipping platform assignment", analysis.getOrderId());
         }
         
-        // Set Category from matched categories
+        
         if (analysis.getCategoryMatches() != null && !analysis.getCategoryMatches().isEmpty()) {
-            String categoryName = analysis.getCategoryMatches().get(0);
-            Category categoryModel = new Category();
-            List<Category> userCategories = categoryModel.findByUserAndIsDeletedFalse(user);
-            Category matchedCategory = userCategories.stream()
-                .filter(cat -> cat.getCategoryName() != null && cat.getCategoryName().equalsIgnoreCase(categoryName))
-                .findFirst()
-                .orElse(null);
-            if (matchedCategory != null) {
-                order.setCategory(matchedCategory);
+            try {
+                String categoryName = analysis.getCategoryMatches().get(0);
+                List<Category> userCategories = categoryRepository.findByUserAndIsDeletedFalse(user);
+                Category matchedCategory = userCategories.stream()
+                    .filter(cat -> cat.getCategoryName() != null && cat.getCategoryName().equalsIgnoreCase(categoryName))
+                    .findFirst()
+                    .orElse(null);
+                if (matchedCategory != null) {
+                    order.setCategory(matchedCategory);
+                    logger.debug("Set category '{}' for order: {}", categoryName, analysis.getOrderId());
+                } else {
+                    logger.warn("Category '{}' not found for user, skipping category assignment", categoryName);
+                }
+            } catch (Exception e) {
+                logger.warn("Error setting category for order {}: {}", analysis.getOrderId(), e.getMessage());
             }
         }
         
-        // Set Vendor
+        
         if (analysis.getVendor() != null && !analysis.getVendor().isEmpty()) {
-            Vendor vendorModel = new Vendor();
-            Vendor vendor = vendorModel.findByVendorName(analysis.getVendor()).orElse(null);
-            if (vendor != null) {
-                order.setVendor(vendor);
+            try {
+                Vendor vendor = vendorRepository.findByVendorName(analysis.getVendor()).orElse(null);
+                if (vendor != null) {
+                    order.setVendor(vendor);
+                    logger.debug("Set vendor '{}' for order: {}", analysis.getVendor(), analysis.getOrderId());
+                } else {
+                    logger.debug("Vendor '{}' not found, will not assign vendor to order: {}", analysis.getVendor(), analysis.getOrderId());
+                }
+            } catch (Exception e) {
+                logger.debug("Error finding vendor '{}' for order {}: {}", analysis.getVendor(), analysis.getOrderId(), e.getMessage());
             }
         }
         
@@ -372,7 +390,6 @@ public class EmailProcessingSchedulerService {
             order.setPrice(BigDecimal.valueOf(analysis.getPrice()));
             logger.debug("Order price: {}", analysis.getPrice());
         } else {
-            // Set default price to 0 if not provided
             order.setPrice(BigDecimal.ZERO);
         }
         
@@ -429,8 +446,20 @@ public class EmailProcessingSchedulerService {
         }
         
         if (platform != null && order.getPlatform() == null) {
-            order.setPlatform(platform);
-            updateLog.append("platform=").append(platform.getPlatformName()).append(" ");
+            // Refresh platform in current transaction to avoid detached entity error
+            try {
+                Long platformId = platform.getId();
+                if (platformId != null) {
+                    Platform refreshedPlatform = platformRepository.findById(platformId).orElse(null);
+                    if (refreshedPlatform != null) {
+                        order.setPlatform(refreshedPlatform);
+                        updateLog.append("platform=").append(platform.getPlatformName()).append(" ");
+                        logger.debug("Refreshed platform entity for order: {}", order.getOrderId());
+                    }
+                }
+            } catch (Exception e) {
+                logger.warn("Error refreshing platform for order {}: {}", order.getOrderId(), e.getMessage());
+            }
         }
         
         order.setUpdateUser(user.getUserId());
@@ -445,13 +474,12 @@ public class EmailProcessingSchedulerService {
         }
         
         try {
-            // Try ISO 8601 format first
+
             LocalDateTime parsed = LocalDateTime.parse(dateTimeStr, DateTimeFormatter.ISO_DATE_TIME);
             logger.debug("Successfully parsed datetime: {} -> {}", dateTimeStr, parsed);
             return parsed;
         } catch (Exception e1) {
             try {
-                // Try alternative formats
                 LocalDateTime parsed = LocalDateTime.parse(dateTimeStr.replace("Z", ""), 
                     DateTimeFormatter.ISO_DATE_TIME);
                 logger.debug("Successfully parsed datetime (alternative format): {} -> {}", dateTimeStr, parsed);
