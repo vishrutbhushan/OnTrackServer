@@ -19,8 +19,9 @@ public class Order {
     private String shipmentStatus;
     private Boolean isDeleted;
     
+    private static final Connection conn = JdbcManager.getInstance().getConnection();
+    
     public static Order findByOrderId(String orderId) throws SQLException {
-        Connection conn = JdbcManager.getInstance().getConnection();
         String sql = "SELECT * FROM orders WHERE order_id = ?";
         try (PreparedStatement stmt = conn.prepareStatement(sql)) {
             stmt.setString(1, orderId);
@@ -33,7 +34,6 @@ public class Order {
     }
 
     public static List<Order> findByUser(Long userId) throws SQLException {
-        Connection conn = JdbcManager.getInstance().getConnection();
         String sql = "SELECT * FROM orders WHERE user_id = ?";
         try (PreparedStatement stmt = conn.prepareStatement(sql)) {
             stmt.setLong(1, userId);
@@ -47,7 +47,6 @@ public class Order {
     }
 
     public static List<Order> findByUserAndIsDeletedFalse(Long userId) throws SQLException {
-        Connection conn = JdbcManager.getInstance().getConnection();
         String sql = "SELECT * FROM orders WHERE user_id = ? AND is_deleted = false";
         try (PreparedStatement stmt = conn.prepareStatement(sql)) {
             stmt.setLong(1, userId);
@@ -61,7 +60,6 @@ public class Order {
     }
 
     public static Order findByIdAndUser(Long id, Long userId) throws SQLException {
-        Connection conn = JdbcManager.getInstance().getConnection();
         String sql = "SELECT * FROM orders WHERE id = ? AND user_id = ?";
         try (PreparedStatement stmt = conn.prepareStatement(sql)) {
             stmt.setLong(1, id);
@@ -83,6 +81,7 @@ public class Order {
         o.setOrderId(rs.getString("order_id"));
         o.setPrice(rs.getBigDecimal("price"));
         o.setQuantity(rs.getInt("quantity"));
+        o.setShipmentStatus(rs.getString("shipment_status"));
         o.setIsDeleted(rs.getBoolean("is_deleted"));
         return o;
     }
@@ -90,7 +89,6 @@ public class Order {
     
 
     public static BigDecimal getTotalSpent(Long userId) throws SQLException {
-        Connection conn = JdbcManager.getInstance().getConnection();
         String sql = "SELECT COALESCE(SUM(price), 0) FROM orders WHERE user_id = ? AND is_deleted = false";
         try (PreparedStatement stmt = conn.prepareStatement(sql)) {
             stmt.setLong(1, userId);
@@ -103,7 +101,6 @@ public class Order {
     }
 
     public static BigDecimal getTotalSpentLast30Days(Long userId, java.time.LocalDateTime thirtyDaysAgo) throws SQLException {
-        Connection conn = JdbcManager.getInstance().getConnection();
         String sql = "SELECT COALESCE(SUM(price), 0) FROM orders WHERE user_id = ? AND is_deleted = false AND order_date >= ?";
         try (PreparedStatement stmt = conn.prepareStatement(sql)) {
             stmt.setLong(1, userId);
@@ -117,7 +114,6 @@ public class Order {
     }
 
     public static long countActiveOrders(Long userId) throws SQLException {
-        Connection conn = JdbcManager.getInstance().getConnection();
         String sql = "SELECT COUNT(*) FROM orders WHERE user_id = ? AND is_deleted = false AND shipment_status NOT IN ('DELIVERED', 'CANCELLED')";
         try (PreparedStatement stmt = conn.prepareStatement(sql)) {
             stmt.setLong(1, userId);
@@ -130,7 +126,6 @@ public class Order {
     }
 
     public static List<Object[]> getMonthlySpendData(Long userId, java.time.LocalDateTime startDate) throws SQLException {
-        Connection conn = JdbcManager.getInstance().getConnection();
         String sql = "SELECT DATE_FORMAT(order_date, '%Y-%m') as month, COALESCE(SUM(price), 0) as totalAmount, COUNT(*) as orderCount FROM orders WHERE user_id = ? AND is_deleted = false AND order_date >= ? GROUP BY DATE_FORMAT(order_date, '%Y-%m') ORDER BY month ASC";
         try (PreparedStatement stmt = conn.prepareStatement(sql)) {
             stmt.setLong(1, userId);
@@ -145,7 +140,6 @@ public class Order {
     }
 
     public static List<Object[]> getSpendingByCategory(Long userId) throws SQLException {
-        Connection conn = JdbcManager.getInstance().getConnection();
         String sql = "SELECT c.category_name, COALESCE(SUM(o.price), 0) as totalAmount, COUNT(o.id) as orderCount FROM orders o LEFT JOIN category c ON o.category_id = c.id WHERE o.user_id = ? AND o.is_deleted = false GROUP BY c.category_name ORDER BY totalAmount DESC";
         try (PreparedStatement stmt = conn.prepareStatement(sql)) {
             stmt.setLong(1, userId);
@@ -159,7 +153,6 @@ public class Order {
     }
 
     public static List<Object[]> getSpendingByPlatform(Long userId) throws SQLException {
-        Connection conn = JdbcManager.getInstance().getConnection();
         String sql = "SELECT p.platform_name, COALESCE(SUM(o.price), 0) as totalAmount, COUNT(o.id) as orderCount FROM orders o LEFT JOIN platform p ON o.platform_id = p.id WHERE o.user_id = ? AND o.is_deleted = false GROUP BY p.platform_name ORDER BY totalAmount DESC";
         try (PreparedStatement stmt = conn.prepareStatement(sql)) {
             stmt.setLong(1, userId);
@@ -173,7 +166,6 @@ public class Order {
     }
 
     public static List<Order> getActiveOrders(Long userId) throws SQLException {
-        Connection conn = JdbcManager.getInstance().getConnection();
         String sql = "SELECT * FROM orders WHERE user_id = ? AND is_deleted = false AND shipment_status NOT IN ('DELIVERED', 'CANCELLED') ORDER BY order_date DESC";
         try (PreparedStatement stmt = conn.prepareStatement(sql)) {
             stmt.setLong(1, userId);
@@ -188,7 +180,6 @@ public class Order {
 
     public void save() {
         try {
-            Connection conn = JdbcManager.getInstance().getConnection();
             String sql = "INSERT INTO orders (user_id, platform_id, category_id, order_id, price, quantity, shipment_status, is_deleted) VALUES (?, ?, ?, ?, ?, ?, ?, ?) ";
             try (PreparedStatement stmt = conn.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS)) {
                 stmt.setLong(1, this.userId);

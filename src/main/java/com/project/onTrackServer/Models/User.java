@@ -19,8 +19,9 @@ public class User {
     private Boolean isDeleted;
     private UserConfig userConfig;
 
+    private static final Connection conn = JdbcManager.getInstance().getConnection();
+
     public static User findByUserId(String userId) throws SQLException {
-        Connection conn = JdbcManager.getInstance().getConnection();
         String sql = "SELECT * FROM users WHERE user_id = ?";
         try (PreparedStatement stmt = conn.prepareStatement(sql)) {
             stmt.setString(1, userId);
@@ -33,7 +34,6 @@ public class User {
     }
 
     public static User findByEmail(String email) throws SQLException {
-        Connection conn = JdbcManager.getInstance().getConnection();
         String sql = "SELECT * FROM users WHERE email = ?";
         try (PreparedStatement stmt = conn.prepareStatement(sql)) {
             stmt.setString(1, email);
@@ -46,7 +46,6 @@ public class User {
     }
 
     public static User create(User user) throws SQLException {
-        Connection conn = JdbcManager.getInstance().getConnection();
         String sql = "INSERT INTO users (user_id, email, display_name, access_token, fcm_token, is_deleted) VALUES (?, ?, ?, ?, ?, false)";
         try (PreparedStatement stmt = conn.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS)) {
             stmt.setString(1, user.getUserId());
@@ -65,7 +64,6 @@ public class User {
     }
 
     public static User update(User user) throws SQLException {
-        Connection conn = JdbcManager.getInstance().getConnection();
         String sql = "UPDATE users SET email = ?, display_name = ?, access_token = ?, fcm_token = ? WHERE user_id = ?";
         try (PreparedStatement stmt = conn.prepareStatement(sql)) {
             stmt.setString(1, user.getEmail());
@@ -79,7 +77,6 @@ public class User {
     }
 
     public static User updateAccessToken(String userId, String accessToken) throws SQLException {
-        Connection conn = JdbcManager.getInstance().getConnection();
         String sql = "UPDATE users SET access_token = ? WHERE user_id = ?";
         try (PreparedStatement stmt = conn.prepareStatement(sql)) {
             stmt.setString(1, accessToken);
@@ -90,7 +87,6 @@ public class User {
     }
 
     public static User updateFcmToken(String userId, String fcmToken) throws SQLException {
-        Connection conn = JdbcManager.getInstance().getConnection();
         String sql = "UPDATE users SET fcm_token = ? WHERE user_id = ?";
         try (PreparedStatement stmt = conn.prepareStatement(sql)) {
             stmt.setString(1, fcmToken);
@@ -109,11 +105,12 @@ public class User {
         u.setAccessToken(rs.getString("access_token"));
         u.setFcmToken(rs.getString("fcm_token"));
         u.setIsDeleted(rs.getBoolean("is_deleted"));
+        // Load userConfig
+        u.setUserConfig(UserConfig.findByUser(conn, u.getId()));
         return u;
     }
 
     public static List<User> findAll() throws SQLException {
-        Connection conn = JdbcManager.getInstance().getConnection();
         String sql = "SELECT * FROM users";
         List<User> users = new ArrayList<>();
         try (PreparedStatement stmt = conn.prepareStatement(sql)) {

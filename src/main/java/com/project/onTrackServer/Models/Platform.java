@@ -14,9 +14,10 @@ public class Platform extends BaseEntity implements IEntity<Platform> {
     private String platformName;
     private Double platformRating;
 
+    private static final Connection conn = JdbcManager.getInstance().getConnection();
+
     @Override
     public List<Platform> findByUser(Long userId) throws SQLException {
-        Connection conn = JdbcManager.getInstance().getConnection();
         String sql = "SELECT * FROM platform WHERE user_id = ?";
         try (PreparedStatement stmt = conn.prepareStatement(sql)) {
             stmt.setLong(1, userId);
@@ -30,7 +31,6 @@ public class Platform extends BaseEntity implements IEntity<Platform> {
     }
 
     public static List<Platform> findByUserAndIsDeletedFalse(Long userId) throws SQLException {
-        Connection conn = JdbcManager.getInstance().getConnection();
         String sql = "SELECT * FROM platform WHERE user_id = ? AND is_deleted = false";
         try (PreparedStatement stmt = conn.prepareStatement(sql)) {
             stmt.setLong(1, userId);
@@ -44,7 +44,6 @@ public class Platform extends BaseEntity implements IEntity<Platform> {
     }
 
     public static Platform findByIdAndUser(Long id, Long userId) throws SQLException {
-        Connection conn = JdbcManager.getInstance().getConnection();
         String sql = "SELECT * FROM platform WHERE id = ? AND user_id = ?";
         try (PreparedStatement stmt = conn.prepareStatement(sql)) {
             stmt.setLong(1, id);
@@ -59,7 +58,6 @@ public class Platform extends BaseEntity implements IEntity<Platform> {
 
     @Override
     public Platform create(Long userId, String platformName) throws SQLException {
-        Connection conn = JdbcManager.getInstance().getConnection();
         String sql = "INSERT INTO platform (user_id, platform_name, is_deleted) VALUES (?, ?, false)";
         try (PreparedStatement stmt = conn.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS)) {
             stmt.setLong(1, userId);
@@ -80,7 +78,6 @@ public class Platform extends BaseEntity implements IEntity<Platform> {
 
     @Override
     public boolean delete(Long userId, Long platformId) throws SQLException {
-        Connection conn = JdbcManager.getInstance().getConnection();
         String sql = "UPDATE platform SET is_deleted = true WHERE id = ? AND user_id = ?";
         try (PreparedStatement stmt = conn.prepareStatement(sql)) {
             stmt.setLong(1, platformId);

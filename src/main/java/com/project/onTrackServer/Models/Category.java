@@ -13,9 +13,10 @@ import lombok.EqualsAndHashCode;
 public class Category extends BaseEntity implements IEntity<Category> {
     private String categoryName;
 
+    private static final Connection conn = JdbcManager.getInstance().getConnection();
+
     @Override
     public List<Category> findByUser(Long userId) throws SQLException {
-        Connection conn = JdbcManager.getInstance().getConnection();
         String sql = "SELECT * FROM category WHERE user_id = ?";
         try (PreparedStatement stmt = conn.prepareStatement(sql)) {
             stmt.setLong(1, userId);
@@ -29,7 +30,6 @@ public class Category extends BaseEntity implements IEntity<Category> {
     }
 
     public static List<Category> findByUserAndIsDeletedFalse(Long userId) throws SQLException {
-        Connection conn = JdbcManager.getInstance().getConnection();
         String sql = "SELECT * FROM category WHERE user_id = ? AND is_deleted = false";
         try (PreparedStatement stmt = conn.prepareStatement(sql)) {
             stmt.setLong(1, userId);
@@ -43,7 +43,6 @@ public class Category extends BaseEntity implements IEntity<Category> {
     }
 
     public static Category findByIdAndUser(Long id, Long userId) throws SQLException {
-        Connection conn = JdbcManager.getInstance().getConnection();
         String sql = "SELECT * FROM category WHERE id = ? AND user_id = ?";
         try (PreparedStatement stmt = conn.prepareStatement(sql)) {
             stmt.setLong(1, id);
@@ -58,7 +57,6 @@ public class Category extends BaseEntity implements IEntity<Category> {
 
     @Override
     public Category create(Long userId, String categoryName) throws SQLException {
-        Connection conn = JdbcManager.getInstance().getConnection();
         String sql = "INSERT INTO category (user_id, category_name, is_deleted) VALUES (?, ?, false)";
         try (PreparedStatement stmt = conn.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS)) {
             stmt.setLong(1, userId);
@@ -79,7 +77,6 @@ public class Category extends BaseEntity implements IEntity<Category> {
 
     @Override
     public boolean delete(Long userId, Long categoryId) throws SQLException {
-        Connection conn = JdbcManager.getInstance().getConnection();
         String sql = "UPDATE category SET is_deleted = true WHERE id = ? AND user_id = ?";
         try (PreparedStatement stmt = conn.prepareStatement(sql)) {
             stmt.setLong(1, categoryId);
