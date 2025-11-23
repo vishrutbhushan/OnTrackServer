@@ -1,11 +1,14 @@
 package com.project.onTrackServer;
+
+import org.springframework.boot.SpringApplication;
+import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.scheduling.annotation.EnableScheduling;
+
+@SpringBootApplication
+@EnableScheduling
 public class OnTrackServerApplication {
 
     public static void main(String[] args) {
-        try {
-            Thread.sleep(2000);
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-        }
+        SpringApplication.run(OnTrackServerApplication.class, args);
     }
 }

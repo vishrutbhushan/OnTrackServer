@@ -1,27 +1,18 @@
-package com.project.onTrackServer.model;
+package com.project.onTrackServer.Models;
 
 import java.sql.*;
 import java.util.ArrayList;
 import java.util.List;
 import com.project.onTrackServer.jdbc.JdbcManager;
 
+import lombok.Data;
+import lombok.EqualsAndHashCode;
+
+@Data
+@EqualsAndHashCode(callSuper = true)
 public class Platform extends BaseEntity implements IEntity<Platform> {
     private String platformName;
     private Double platformRating;
-
-    public Platform() {}
-    public Platform(Long id, Long userId, String platformName, Double platformRating, Boolean isDeleted) {
-        this.id = id;
-        this.userId = userId;
-        this.platformName = platformName;
-        this.platformRating = platformRating;
-        this.isDeleted = isDeleted;
-    }
-
-    public String getPlatformName() { return platformName; }
-    public void setPlatformName(String platformName) { this.platformName = platformName; }
-    public Double getPlatformRating() { return platformRating; }
-    public void setPlatformRating(Double platformRating) { this.platformRating = platformRating; }
 
     @Override
     public List<Platform> findByUser(Long userId) throws SQLException {

@@ -1,11 +1,13 @@
-package com.project.onTrackServer.model;
+package com.project.onTrackServer.Models;
 
 import java.sql.*;
 import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.List;
 import com.project.onTrackServer.jdbc.JdbcManager;
+import lombok.Data;
 
+@Data
 public class Order {
     private Long id;
     private Long userId;
@@ -14,39 +16,8 @@ public class Order {
     private String orderId;
     private BigDecimal price;
     private Integer quantity;
+    private String shipmentStatus;
     private Boolean isDeleted;
-
-    
-    public Order() {}
-    public Order(Long id, Long userId, Long platformId, Long categoryId, String orderId, BigDecimal price, Integer quantity, Boolean isDeleted) {
-        this.id = id;
-        this.userId = userId;
-        this.platformId = platformId;
-        this.categoryId = categoryId;
-        this.orderId = orderId;
-        this.price = price;
-        this.quantity = quantity;
-        this.isDeleted = isDeleted;
-    }
-
-    
-    public Long getId() { return id; }
-    public void setId(Long id) { this.id = id; }
-    public Long getUserId() { return userId; }
-    public void setUserId(Long userId) { this.userId = userId; }
-    public Long getPlatformId() { return platformId; }
-    public void setPlatformId(Long platformId) { this.platformId = platformId; }
-    public Long getCategoryId() { return categoryId; }
-    public void setCategoryId(Long categoryId) { this.categoryId = categoryId; }
-    public String getOrderId() { return orderId; }
-    public void setOrderId(String orderId) { this.orderId = orderId; }
-    public BigDecimal getPrice() { return price; }
-    public void setPrice(BigDecimal price) { this.price = price; }
-    public Integer getQuantity() { return quantity; }
-    public void setQuantity(Integer quantity) { this.quantity = quantity; }
-    public Boolean getIsDeleted() { return isDeleted; }
-    public void setIsDeleted(Boolean isDeleted) { this.isDeleted = isDeleted; }
-
     
     public static Order findByOrderId(String orderId) throws SQLException {
         Connection conn = JdbcManager.getInstance().getConnection();
@@ -212,6 +183,34 @@ public class Order {
                 orders.add(fromResultSet(rs));
             }
             return orders;
+        }
+    }
+
+    public void save() {
+        try {
+            Connection conn = JdbcManager.getInstance().getConnection();
+            String sql = "INSERT INTO orders (user_id, platform_id, category_id, order_id, price, quantity, shipment_status, is_deleted) VALUES (?, ?, ?, ?, ?, ?, ?, ?) ";
+            try (PreparedStatement stmt = conn.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS)) {
+                stmt.setLong(1, this.userId);
+                if (this.platformId != null) stmt.setLong(2, this.platformId); else stmt.setNull(2, Types.BIGINT);
+                if (this.categoryId != null) stmt.setLong(3, this.categoryId); else stmt.setNull(3, Types.BIGINT);
+                stmt.setString(4, this.orderId);
+                stmt.setBigDecimal(5, this.price);
+                stmt.setInt(6, this.quantity != null ? this.quantity : 1);
+                stmt.setString(7, this.shipmentStatus);
+                stmt.setBoolean(8, this.isDeleted != null ? this.isDeleted : false);
+                int affectedRows = stmt.executeUpdate();
+                if (affectedRows == 0) {
+                    throw new SQLException("Creating order failed, no rows affected.");
+                }
+                try (ResultSet generatedKeys = stmt.getGeneratedKeys()) {
+                    if (generatedKeys.next()) {
+                        this.id = generatedKeys.getLong(1);
+                    }
+                }
+            }
+        } catch (SQLException e) {
+            throw new RuntimeException("Failed to save order: " + e.getMessage(), e);
         }
     }
 }

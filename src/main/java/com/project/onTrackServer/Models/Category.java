@@ -1,23 +1,17 @@
-package com.project.onTrackServer.model;
+package com.project.onTrackServer.Models;
 
 import java.sql.*;
 import java.util.ArrayList;
 import java.util.List;
 import com.project.onTrackServer.jdbc.JdbcManager;
 
+import lombok.Data;
+import lombok.EqualsAndHashCode;
+
+@Data
+@EqualsAndHashCode(callSuper = true)
 public class Category extends BaseEntity implements IEntity<Category> {
     private String categoryName;
-
-    public Category() {}
-    public Category(Long id, Long userId, String categoryName, Boolean isDeleted) {
-        this.id = id;
-        this.userId = userId;
-        this.categoryName = categoryName;
-        this.isDeleted = isDeleted;
-    }
-
-    public String getCategoryName() { return categoryName; }
-    public void setCategoryName(String categoryName) { this.categoryName = categoryName; }
 
     @Override
     public List<Category> findByUser(Long userId) throws SQLException {

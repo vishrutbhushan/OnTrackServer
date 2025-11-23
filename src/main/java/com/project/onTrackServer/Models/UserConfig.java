@@ -1,10 +1,13 @@
-package com.project.onTrackServer.model;
+package com.project.onTrackServer.Models;
 
 import java.sql.*;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 
+import lombok.Data;
+
+@Data
 public class UserConfig {
     private Long id;
     private Long userId;
@@ -13,35 +16,6 @@ public class UserConfig {
     private LocalDateTime lastProcessedEmailTime;
     private Boolean autoArchiveOrderEmails;
     private Boolean isDeleted;
-
-    
-    public UserConfig() {}
-    public UserConfig(Long id, Long userId, Integer pollingFrequency, Boolean notificationEnabled, LocalDateTime lastProcessedEmailTime, Boolean autoArchiveOrderEmails, Boolean isDeleted) {
-        this.id = id;
-        this.userId = userId;
-        this.pollingFrequency = pollingFrequency;
-        this.notificationEnabled = notificationEnabled;
-        this.lastProcessedEmailTime = lastProcessedEmailTime;
-        this.autoArchiveOrderEmails = autoArchiveOrderEmails;
-        this.isDeleted = isDeleted;
-    }
-
-    
-    public Long getId() { return id; }
-    public void setId(Long id) { this.id = id; }
-    public Long getUserId() { return userId; }
-    public void setUserId(Long userId) { this.userId = userId; }
-    public Integer getPollingFrequency() { return pollingFrequency; }
-    public void setPollingFrequency(Integer pollingFrequency) { this.pollingFrequency = pollingFrequency; }
-    public Boolean getNotificationEnabled() { return notificationEnabled; }
-    public void setNotificationEnabled(Boolean notificationEnabled) { this.notificationEnabled = notificationEnabled; }
-    public LocalDateTime getLastProcessedEmailTime() { return lastProcessedEmailTime; }
-    public void setLastProcessedEmailTime(LocalDateTime lastProcessedEmailTime) { this.lastProcessedEmailTime = lastProcessedEmailTime; }
-    public Boolean getAutoArchiveOrderEmails() { return autoArchiveOrderEmails; }
-    public void setAutoArchiveOrderEmails(Boolean autoArchiveOrderEmails) { this.autoArchiveOrderEmails = autoArchiveOrderEmails; }
-    public Boolean getIsDeleted() { return isDeleted; }
-    public void setIsDeleted(Boolean isDeleted) { this.isDeleted = isDeleted; }
-
     
     public static UserConfig findByUser(Connection conn, Long userId) throws SQLException {
         String sql = "SELECT * FROM user_config WHERE user_id = ?";

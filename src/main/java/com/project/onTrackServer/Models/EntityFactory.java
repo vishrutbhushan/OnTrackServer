@@ -1,4 +1,4 @@
-package com.project.onTrackServer.model;
+package com.project.onTrackServer.Models;
 
 public class EntityFactory {
     public static BaseEntity createEntity(String type) {

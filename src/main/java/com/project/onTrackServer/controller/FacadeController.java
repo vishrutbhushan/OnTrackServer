@@ -1,8 +1,9 @@
 package com.project.onTrackServer.controller;
-import com.project.onTrackServer.model.*;
 import java.math.BigDecimal;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+
+import com.project.onTrackServer.Models.*;
 
 @RestController
 @RequestMapping("/api")
@@ -47,24 +48,25 @@ public class FacadeController {
             @RequestParam(required = false) User user,
             @RequestParam String action) {
         try {
-
-            User userObj = new User();
-
             switch (action) {
                 case "create":
-                    return ResponseEntity.ok(userObj.create(user).toString());
+                    return ResponseEntity.ok(User.create(user).toString());
                 case "get":
-                    User foundUser = user.findByUserId(userObj.toString());
+                    if (userId == null) return ResponseEntity.badRequest().body("userId required");
+                    User foundUser = User.findByUserId(userId.toString());
                     if (foundUser == null)
                         return ResponseEntity.ok("Not found");
                     return ResponseEntity.ok(foundUser.toString());
                 case "update":
+                    if (user == null || userId == null) return ResponseEntity.badRequest().body("user and userId required");
                     user.setUserId(userId.toString());
-                    return ResponseEntity.ok(userObj.update(user).toString());
+                    return ResponseEntity.ok(User.update(user).toString());
                 case "updateAccessToken":
-                    return ResponseEntity.ok(userObj.updateAccessToken(userId.toString(), accessToken).toString());
+                    if (userId == null || accessToken == null) return ResponseEntity.badRequest().body("userId and accessToken required");
+                    return ResponseEntity.ok(User.updateAccessToken(userId.toString(), accessToken).toString());
                 case "updateFcmToken":
-                    return ResponseEntity.ok(userObj.updateFcmToken(userId.toString(), fcmToken).toString());
+                    if (userId == null || fcmToken == null) return ResponseEntity.badRequest().body("userId and fcmToken required");
+                    return ResponseEntity.ok(User.updateFcmToken(userId.toString(), fcmToken).toString());
                 default:
                     return ResponseEntity.badRequest().body("Unknown action");
             }
