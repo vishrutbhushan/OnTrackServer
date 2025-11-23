@@ -38,19 +38,14 @@ public class SchedulerService {
                     List<Order> orders = parserService.extractOrdersFromEmail(email);
                     for (Order order : orders) {
                         // Ensure the order has the userId set
-                        order.setUserId(user.getId());
+                        order.setUser(user);
                         order.save();
                         Notifications not = new Notifications(user, order);
                         not.sendOrderNotification();
                     }
                     email.archive();
                 }
-                // Update last processed email time
-                try (Connection conn = JdbcManager.getInstance().getConnection()) {
-                    UserConfig.updateLastProcessedEmailTime(conn, user.getId(), LocalDateTime.now());
-                } catch (Exception e) {
-                    logger.error("Error updating last processed email time for user {}: {}", user.getEmail(), e.getMessage());
-                }
+                UserConfig.updateLastProcessedEmailTime(user, LocalDateTime.now());
             }
             logger.debug("Triggered processEmails");
         } catch (Exception e) {

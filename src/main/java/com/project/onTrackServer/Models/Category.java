@@ -10,16 +10,19 @@ import lombok.EqualsAndHashCode;
 
 @Data
 @EqualsAndHashCode(callSuper = true)
-public class Category extends BaseEntity implements IEntity<Category> {
+public class Category extends BaseEntity implements Entity<Category> {
     private String categoryName;
 
-    private static final Connection conn = JdbcManager.getInstance().getConnection();
+    public Category() {
+        this.isDeleted = false;
+    }
 
     @Override
-    public List<Category> findByUser(Long userId) throws SQLException {
+    public List<Category> findByUser(User user) throws SQLException {
         String sql = "SELECT * FROM category WHERE user_id = ?";
-        try (PreparedStatement stmt = conn.prepareStatement(sql)) {
-            stmt.setLong(1, userId);
+        try (Connection conn = JdbcManager.getInstance().getConnection();
+             PreparedStatement stmt = conn.prepareStatement(sql)) {
+            stmt.setLong(1, user.getId());
             ResultSet rs = stmt.executeQuery();
             List<Category> categories = new ArrayList<>();
             while (rs.next()) {
@@ -29,10 +32,11 @@ public class Category extends BaseEntity implements IEntity<Category> {
         }
     }
 
-    public static List<Category> findByUserAndIsDeletedFalse(Long userId) throws SQLException {
+    public static List<Category> findByUserAndIsDeletedFalse(User user) throws SQLException {
         String sql = "SELECT * FROM category WHERE user_id = ? AND is_deleted = false";
-        try (PreparedStatement stmt = conn.prepareStatement(sql)) {
-            stmt.setLong(1, userId);
+        try (Connection conn = JdbcManager.getInstance().getConnection();
+             PreparedStatement stmt = conn.prepareStatement(sql)) {
+            stmt.setLong(1, user.getId());
             ResultSet rs = stmt.executeQuery();
             List<Category> categories = new ArrayList<>();
             while (rs.next()) {
@@ -42,11 +46,12 @@ public class Category extends BaseEntity implements IEntity<Category> {
         }
     }
 
-    public static Category findByIdAndUser(Long id, Long userId) throws SQLException {
+    public static Category findByIdAndUser(Long id, User user) throws SQLException {
         String sql = "SELECT * FROM category WHERE id = ? AND user_id = ?";
-        try (PreparedStatement stmt = conn.prepareStatement(sql)) {
+        try (Connection conn = JdbcManager.getInstance().getConnection();
+             PreparedStatement stmt = conn.prepareStatement(sql)) {
             stmt.setLong(1, id);
-            stmt.setLong(2, userId);
+            stmt.setLong(2, user.getId());
             ResultSet rs = stmt.executeQuery();
             if (rs.next()) {
                 return fromResultSet(rs);
@@ -56,17 +61,18 @@ public class Category extends BaseEntity implements IEntity<Category> {
     }
 
     @Override
-    public Category create(Long userId, String categoryName) throws SQLException {
+    public Category create(User user, String categoryName) throws SQLException {
         String sql = "INSERT INTO category (user_id, category_name, is_deleted) VALUES (?, ?, false)";
-        try (PreparedStatement stmt = conn.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS)) {
-            stmt.setLong(1, userId);
+        try (Connection conn = JdbcManager.getInstance().getConnection();
+             PreparedStatement stmt = conn.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS)) {
+            stmt.setLong(1, user.getId());
             stmt.setString(2, categoryName);
             stmt.executeUpdate();
             ResultSet keys = stmt.getGeneratedKeys();
             if (keys.next()) {
                 Category c = new Category();
                 c.setId(keys.getLong(1));
-                c.setUserId(userId);
+                c.setUser(user);
                 c.setCategoryName(categoryName);
                 c.setIsDeleted(false);
                 return c;
@@ -76,11 +82,12 @@ public class Category extends BaseEntity implements IEntity<Category> {
     }
 
     @Override
-    public boolean delete(Long userId, Long categoryId) throws SQLException {
+    public boolean delete(User user, Long categoryId) throws SQLException {
         String sql = "UPDATE category SET is_deleted = true WHERE id = ? AND user_id = ?";
-        try (PreparedStatement stmt = conn.prepareStatement(sql)) {
+        try (Connection conn = JdbcManager.getInstance().getConnection();
+             PreparedStatement stmt = conn.prepareStatement(sql)) {
             stmt.setLong(1, categoryId);
-            stmt.setLong(2, userId);
+            stmt.setLong(2, user.getId());
             return stmt.executeUpdate() > 0;
         }
     }
@@ -88,7 +95,11 @@ public class Category extends BaseEntity implements IEntity<Category> {
     public static Category fromResultSet(ResultSet rs) throws SQLException {
         Category c = new Category();
         c.setId(rs.getLong("id"));
-        c.setUserId(rs.getLong("user_id"));
+        Long userId = rs.getLong("user_id");
+        if (userId != null) {
+            User user = User.findByUserId(String.valueOf(userId)); // Adjust if you have a better way to fetch User by id
+            c.setUser(user);
+        }
         c.setCategoryName(rs.getString("category_name"));
         c.setIsDeleted(rs.getBoolean("is_deleted"));
         return c;

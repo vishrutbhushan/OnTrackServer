@@ -11,9 +11,8 @@ import java.io.InputStream;
 
 public class Notifications {
 
-
-    private User user;
-    private Order order;
+    private final User user;
+    private final Order order;
 
     static {
         initializeFirebase();

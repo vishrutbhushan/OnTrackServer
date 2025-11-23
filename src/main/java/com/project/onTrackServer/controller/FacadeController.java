@@ -1,4 +1,5 @@
 package com.project.onTrackServer.controller;
+
 import java.math.BigDecimal;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -19,6 +20,9 @@ public class FacadeController {
             @RequestParam(required = false) String name) {
         try {
             BaseEntity entityObj;
+            User user = User.findByUserId(userId.toString());
+            if (user == null)
+                return ResponseEntity.ok("Not found");
             try {
                 entityObj = EntityFactory.createEntity(entity);
             } catch (IllegalArgumentException ex) {
@@ -27,11 +31,11 @@ public class FacadeController {
 
             switch (action) {
                 case "create":
-                    return ResponseEntity.ok(entityObj.create(userId, name).toString());
+                    return ResponseEntity.ok(entityObj.create(user, name).toString());
                 case "list":
-                    return ResponseEntity.ok(entityObj.findByUser(userId).toString());
+                    return ResponseEntity.ok(entityObj.findByUser(user).toString());
                 case "delete":
-                    boolean deleted = entityObj.delete(userId, entityId);
+                    boolean deleted = entityObj.delete(user, entityId);
                     return ResponseEntity.ok(deleted ? (entity + " deleted") : "Not found");
                 default:
                     return ResponseEntity.badRequest().body("Unknown action");
@@ -52,20 +56,24 @@ public class FacadeController {
                 case "create":
                     return ResponseEntity.ok(User.create(user).toString());
                 case "get":
-                    if (userId == null) return ResponseEntity.badRequest().body("userId required");
+                    if (userId == null)
+                        return ResponseEntity.badRequest().body("userId required");
                     User foundUser = User.findByUserId(userId.toString());
                     if (foundUser == null)
                         return ResponseEntity.ok("Not found");
                     return ResponseEntity.ok(foundUser.toString());
                 case "update":
-                    if (user == null || userId == null) return ResponseEntity.badRequest().body("user and userId required");
+                    if (user == null || userId == null)
+                        return ResponseEntity.badRequest().body("user and userId required");
                     user.setUserId(userId.toString());
                     return ResponseEntity.ok(User.update(user).toString());
                 case "updateAccessToken":
-                    if (userId == null || accessToken == null) return ResponseEntity.badRequest().body("userId and accessToken required");
+                    if (userId == null || accessToken == null)
+                        return ResponseEntity.badRequest().body("userId and accessToken required");
                     return ResponseEntity.ok(User.updateAccessToken(userId.toString(), accessToken).toString());
                 case "updateFcmToken":
-                    if (userId == null || fcmToken == null) return ResponseEntity.badRequest().body("userId and fcmToken required");
+                    if (userId == null || fcmToken == null)
+                        return ResponseEntity.badRequest().body("userId and fcmToken required");
                     return ResponseEntity.ok(User.updateFcmToken(userId.toString(), fcmToken).toString());
                 default:
                     return ResponseEntity.badRequest().body("Unknown action");
@@ -79,9 +87,14 @@ public class FacadeController {
     public ResponseEntity<String> dashboardAction(@RequestParam(required = false) Long userId,
             @RequestParam String action) {
         try {
+
+            User user = User.findByUserId(userId.toString());
+            if (user == null)
+                return ResponseEntity.ok("Not found");
+
             switch (action) {
                 case "kpi":
-                    long totalOrders = Order.findByUserAndIsDeletedFalse(userId).size();
+                    long totalOrders = Order.findByUserAndIsDeletedFalse(user).size();
                     BigDecimal totalSpent = Order.getTotalSpent(userId);
                     BigDecimal last30DaysSpent = Order.getTotalSpentLast30Days(userId,
                             java.time.LocalDateTime.now().minusDays(30));
