@@ -33,11 +33,11 @@ public class SchedulerService {
             for (User user : users) {
                 List<Email> emails = Email.fetchEmailsForProcessing(user);
                 for (Email email : emails) {
-                    // Ensure the email has the user set
+                    
                     email.setUser(user);
                     List<Order> orders = parserService.extractOrdersFromEmail(email);
                     for (Order order : orders) {
-                        // Ensure the order has the userId set
+                        
                         order.setUser(user);
                         order.save();
                         Notifications not = new Notifications(user, order);
