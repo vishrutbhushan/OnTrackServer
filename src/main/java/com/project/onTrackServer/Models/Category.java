@@ -10,7 +10,9 @@ import lombok.EqualsAndHashCode;
 
 @Data
 @EqualsAndHashCode(callSuper = true)
+
 public class Category extends BaseEntity implements Entity<Category> {
+    private static final Connection connection = JdbcManager.getInstance().getConnection();
     private String categoryName;
 
     public Category() {
@@ -20,8 +22,7 @@ public class Category extends BaseEntity implements Entity<Category> {
     @Override
     public List<Category> findByUser(User user) throws SQLException {
         String sql = "SELECT * FROM category WHERE user_id = ?";
-        try (Connection conn = JdbcManager.getInstance().getConnection();
-             PreparedStatement stmt = conn.prepareStatement(sql)) {
+        try (PreparedStatement stmt = connection.prepareStatement(sql)) {
             stmt.setLong(1, user.getId());
             ResultSet rs = stmt.executeQuery();
             List<Category> categories = new ArrayList<>();
@@ -34,8 +35,7 @@ public class Category extends BaseEntity implements Entity<Category> {
 
     public static List<Category> findByUserAndIsDeletedFalse(User user) throws SQLException {
         String sql = "SELECT * FROM category WHERE user_id = ? AND is_deleted = false";
-        try (Connection conn = JdbcManager.getInstance().getConnection();
-             PreparedStatement stmt = conn.prepareStatement(sql)) {
+        try (PreparedStatement stmt = connection.prepareStatement(sql)) {
             stmt.setLong(1, user.getId());
             ResultSet rs = stmt.executeQuery();
             List<Category> categories = new ArrayList<>();
@@ -48,8 +48,7 @@ public class Category extends BaseEntity implements Entity<Category> {
 
     public static Category findByIdAndUser(Long id, User user) throws SQLException {
         String sql = "SELECT * FROM category WHERE id = ? AND user_id = ?";
-        try (Connection conn = JdbcManager.getInstance().getConnection();
-             PreparedStatement stmt = conn.prepareStatement(sql)) {
+        try (PreparedStatement stmt = connection.prepareStatement(sql)) {
             stmt.setLong(1, id);
             stmt.setLong(2, user.getId());
             ResultSet rs = stmt.executeQuery();
@@ -63,8 +62,7 @@ public class Category extends BaseEntity implements Entity<Category> {
     @Override
     public Category create(User user, String categoryName) throws SQLException {
         String sql = "INSERT INTO category (user_id, category_name, is_deleted) VALUES (?, ?, false)";
-        try (Connection conn = JdbcManager.getInstance().getConnection();
-             PreparedStatement stmt = conn.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS)) {
+        try (PreparedStatement stmt = connection.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS)) {
             stmt.setLong(1, user.getId());
             stmt.setString(2, categoryName);
             stmt.executeUpdate();
@@ -84,8 +82,7 @@ public class Category extends BaseEntity implements Entity<Category> {
     @Override
     public boolean delete(User user, Long categoryId) throws SQLException {
         String sql = "UPDATE category SET is_deleted = true WHERE id = ? AND user_id = ?";
-        try (Connection conn = JdbcManager.getInstance().getConnection();
-             PreparedStatement stmt = conn.prepareStatement(sql)) {
+        try (PreparedStatement stmt = connection.prepareStatement(sql)) {
             stmt.setLong(1, categoryId);
             stmt.setLong(2, user.getId());
             return stmt.executeUpdate() > 0;
@@ -97,7 +94,7 @@ public class Category extends BaseEntity implements Entity<Category> {
         c.setId(rs.getLong("id"));
         Long userId = rs.getLong("user_id");
         if (userId != null) {
-            User user = User.findByUserId(String.valueOf(userId)); // Adjust if you have a better way to fetch User by id
+            User user = User.findByUserId(String.valueOf(userId)); 
             c.setUser(user);
         }
         c.setCategoryName(rs.getString("category_name"));

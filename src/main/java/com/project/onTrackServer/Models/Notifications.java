@@ -41,10 +41,6 @@ public class Notifications {
     }
 
     public void sendOrderNotification() {
-        if (user == null || user.getFcmToken() == null) {
-            throw new RuntimeException("Cannot send notification, missing FCM token");
-        }
-
         String status = (order.getShipmentStatus() != null) ? order.getShipmentStatus() : "Order Update";
         String title = status.toUpperCase();
         String body = "Order " + order.getOrderId() + " (" + order.getQuantity() + " item(s)) - " + status;
@@ -62,7 +58,7 @@ public class Notifications {
         try {
             FirebaseMessaging.getInstance().send(message);
         } catch (Exception e) {
-            throw new RuntimeException("Failed to send push notification", e);
+            throw new RuntimeException("Failed to send notification", e);
         }
     }
 }
