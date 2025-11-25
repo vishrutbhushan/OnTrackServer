@@ -44,8 +44,8 @@ public class ParserService {
 
             return parseOrders(response);
         } catch (Exception e) {
-            logger.error("Failed to parse order from email: {}", e.getMessage());
-            return List.of();
+            System.out.println("Failed to parse order from email: {}", e.getMessage());
+            return null;
         }
     }
 
@@ -83,7 +83,7 @@ public class ParserService {
                 orders.add(order);
             }
         } catch (Exception e) {
-            logger.error("Error parsing Gemini order response: {}", e.getMessage());
+            System.out.println("Error parsing Gemini order response: {}", e.getMessage());
         }
 
         return orders;
