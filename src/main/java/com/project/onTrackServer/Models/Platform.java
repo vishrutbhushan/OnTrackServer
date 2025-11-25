@@ -96,10 +96,9 @@ public class Platform extends BaseEntity implements Entity<Platform> {
     private static Platform fromResultSet(ResultSet rs) throws SQLException {
         Platform p = new Platform();
         p.setId(rs.getLong("id"));
-        // Set user object from user_id
         Long userId = rs.getLong("user_id");
         if (userId != null) {
-            User user = User.findByUserId(String.valueOf(userId)); // Adjust if you have a better way to fetch User by id
+            User user = User.findByUserId(String.valueOf(userId));
             p.setUser(user);
         }
         p.setPlatformName(rs.getString("platform_name"));
