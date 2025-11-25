@@ -54,7 +54,7 @@ public class Email {
             if (response.getMessages() == null)
                 return emails;
 
-            // Read the full content of each message
+            
             for (Message message : response.getMessages()) {
                 Email email = readMessage(service, message.getId());
                 if (email != null) {
@@ -84,14 +84,14 @@ public class Email {
 
     private static Email readMessage(Gmail service, String messageId) {
         try {
-            // Use format "full" to get all parts and headers
+            
             Message message = service.users().messages().get("me", messageId).setFormat("full").execute();
 
             Email email = new Email();
             email.setId(messageId);
             email.setBody(extractBody(message.getPayload()));
 
-            // Extract headers
+            
             if (message.getPayload() != null && message.getPayload().getHeaders() != null) {
                 for (MessagePartHeader header : message.getPayload().getHeaders()) {
                     String name = header.getName().toLowerCase();
@@ -103,10 +103,7 @@ public class Email {
                 }
             }
 
-            // Try to set user if possible (from thread-local or static context if available)
-            // This is a placeholder: actual user assignment should be handled by fetchEmails
-            // or by passing user as a parameter if refactored in the future.
-
+            
             return email;
         } catch (Exception e) {
             logger.error("Error reading message {}: {}", messageId, e.getMessage());
@@ -144,9 +141,9 @@ public class Email {
         StringBuilder query = new StringBuilder(
                 "(order OR shipped OR delivery OR confirmation) -spam -trash");
 
-        // Append 'after' clause if a last processed time is available
+        
         if (user.getUserConfig() != null && user.getUserConfig().getLastProcessedEmailTime() != null) {
-            // Convert to Epoch seconds for Gmail query
+            
             ZonedDateTime zdt = user.getUserConfig().getLastProcessedEmailTime().atZone(ZoneId.systemDefault());
             query.append(" after:").append(zdt.toEpochSecond());
         }
@@ -159,11 +156,7 @@ public class Email {
     }
 
     public void archive() {
-        if (this.id == null) {
-            logger.warn("Cannot archive email, ID is null.");
-            return;
-        }
-
+       
         try {
             Gmail service = createGmailService(user);
             if (service == null) {
@@ -172,13 +165,13 @@ public class Email {
             }
 
             ModifyMessageRequest modifyMessageRequest = new ModifyMessageRequest()
-                    .setRemoveLabelIds(Arrays.asList("INBOX")); // Remove from Inbox
+                    .setRemoveLabelIds(Arrays.asList("INBOX")); 
 
             service.users().messages().modify("me", this.id, modifyMessageRequest).execute();
             logger.info("Archived email with ID: {}", this.id);
 
         } catch (Exception e) {
-            logger.error("Error archiving email with ID {}: {}", this.id, e.getMessage());
+            logger.error("Error archiving email ");
         }
     }
 }
